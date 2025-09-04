@@ -1,0 +1,54 @@
+[tool.poetry]
+name = "mechafil-server"
+version = "0.1.0"
+description = "FastAPI server for running mechafil-jax simulations"
+authors = ["CEL Team"]
+readme = "README.md"
+packages = [{include = "mechafil_server"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+# Web framework dependencies
+fastapi = "^0.100.0"
+uvicorn = {extras = ["standard"], version = "^0.22.0"}
+# Scientific computing (from environment.yaml and setup.py)
+jax = "^0.4.13"
+jaxlib = "^0.4.13"
+numpy = ">=1.24.0"
+scipy = "^1.10.0"
+matplotlib = "^3.7.0"
+seaborn = "^0.12.0"
+# Utilities
+python-dotenv = "^1.0.0"
+tqdm = "^4.65.0"
+dill = "^0.3.6"
+diskcache = "^5.6.0"
+# Data handling
+pandas = "^2.0.0"
+# Git dependencies
+pystarboard = {git = "https://github.com/CELtd/pystarboard.git"}
+mechafil-jax = {git = "https://github.com/CELtd/mechafil-jax.git"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+jupyter = "^1.0.0"
+ipykernel = "^6.25.0"
+# Optional: add more dev tools as needed
+black = "^23.7.0"
+isort = "^5.12.0"
+
+[tool.poetry.scripts]
+mechafil-server = "mechafil_server.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100

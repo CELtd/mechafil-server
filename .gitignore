@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Environments
+.env
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Project data caches
+mechafil-server/data/*.pkl
+mechafil-server/data/*.json
+!mechafil-server/data/.gitkeep
+
+# Auth/secrets (example paths)
+auths/*.json
+*.token
+
