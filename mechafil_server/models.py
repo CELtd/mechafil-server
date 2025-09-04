@@ -61,7 +61,7 @@ class SimulationRequest(BaseModel):
                     "rbp": 3.3795318603515625,
                     "rr": 0.834245140193526,
                     "fpr": 0.8558804137732767,
-                    "lock_target": 0.0,
+                    "lock_target": 0.3,
                     "forecast_length_days": 365,
                     "sector_duration_days": 540,
                 }
