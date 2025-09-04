@@ -12,16 +12,14 @@ FastAPI service to run Filecoin economic forecasts using historical data and ret
 
 ## Install
 
-From the repository root:
+Using Poetry (recommended):
 
 ```
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ./pystarboard -e ./mechafil-jax -e ./mechafil-server
-pip install fastapi "uvicorn[standard]" python-dotenv matplotlib
-# JAX (CPU)
-pip install -U "jax[cpu]"
+cd mechafil-server
+poetry install
 ```
+
+This installs the server and all dependencies declared in `pyproject.toml` (including FastAPI, Uvicorn, JAX, matplotlib, mechafil-jax, and pystarboard).
 
 
 ## Configure Data Access (Spacescope)
@@ -55,10 +53,14 @@ SPACESCOPE_TOKEN=Bearer YOUR_TOKEN_HERE
 
 ## Run
 
-From the repository root (with your venv active):
+From the `mechafil-server` folder:
 
 ```
-uvicorn mechafil_server.main:app --reload --host 0.0.0.0 --port 8000 --app-dir mechafil-server
+# Start with Poetry
+poetry run mechafil-server
+
+# Or run Uvicorn explicitly
+poetry run uvicorn mechafil_server.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Docs:
@@ -104,4 +106,3 @@ Then open: http://localhost:8000/latest-simulation/plots/html
 
 - Do not commit real tokens. `.gitignore` excludes `.env` and data caches.
 - Restrict CORS for production.
-
