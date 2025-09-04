@@ -3,6 +3,11 @@
 from datetime import date
 from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field, field_validator
+try:
+    # Pydantic v2
+    from pydantic import ConfigDict
+except Exception:
+    ConfigDict = None  # type: ignore
 
 
 
@@ -47,6 +52,21 @@ class SimulationRequest(BaseModel):
     sector_duration_days: Optional[int] = Field(
         default=None, description="Average sector duration in days"
     )
+
+    # Example payload shown in Swagger UI for quick testing
+    if ConfigDict is not None:
+        model_config = ConfigDict(
+            json_schema_extra={
+                "example": {
+                    "rbp": 3.3795318603515625,
+                    "rr": 0.834245140193526,
+                    "fpr": 0.8558804137732767,
+                    "lock_target": 0.0,
+                    "forecast_length_days": 365,
+                    "sector_duration_days": 540,
+                }
+            }
+        )
 
 class SimulationError(BaseModel):
     status: str = Field(default="error")

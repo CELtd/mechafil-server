@@ -19,13 +19,6 @@ from mechafil_jax.sim import run_sim
 from mechafil_jax.data import get_simulation_data
 import mechafil_jax.data as data
 
-# Load scenario_generator.utils without polluting sys.path,
-# to avoid shadowing our mechafil_jax package with fip100's copy.
-from importlib.util import spec_from_file_location, module_from_spec
-_UTILS_PATH = '/home/luca/programmi/cel/mechafil/programs/fip100/fip100/scenario_generator/utils.py'
-_spec = spec_from_file_location("scenario_generator_utils", _UTILS_PATH)
-u = module_from_spec(_spec)
-_spec.loader.exec_module(u)
 
 logger = logging.getLogger(__name__)
 
@@ -106,12 +99,35 @@ class SimulationRunner:
                 except Exception as _e:
                     logger.warning(f"Failed trimming historical_renewal_rate: {_e}")
 
-        _, hist_rbp = u.get_historical_daily_onboarded_power(current_date - timedelta(days=180), current_date)
-        _, hist_rr = u.get_historical_renewal_rate(current_date - timedelta(days=180), current_date)
-        _, hist_fpr = u.get_historical_filplus_rate(current_date - timedelta(days=180), current_date)
-        smoothed_last_historical_rbp = float(np.median(hist_rbp[-30:]))
-        smoothed_last_historical_rr = float(np.median(hist_rr[-30:]))
-        smoothed_last_historical_fpr = float(np.median(hist_fpr[-30:]))
+        # Derive recent historical windows and smoothed medians directly from offline_data
+        rbp_hist = np.asarray(offline_data.get("historical_onboarded_rb_power_pib", []))
+        rr_hist = np.asarray(offline_data.get("historical_renewal_rate", []))
+        qa_on_hist = np.asarray(offline_data.get("historical_onboarded_qa_power_pib", []))
+
+        # Estimate FIL+ rate from QA/RB onboarding with m=10 (default)
+        m = 10.0
+        with np.errstate(divide='ignore', invalid='ignore'):
+            fpr_est = (qa_on_hist / np.where(rbp_hist == 0, np.nan, rbp_hist) - 1.0) / (m - 1.0)
+        fpr_est = np.clip(fpr_est, 0.0, 1.0)
+
+        def tail(arr, n):
+            arr = np.asarray(arr)
+            return arr[-n:] if arr.size else np.array([])
+
+        hist_rbp = tail(rbp_hist, 180)
+        hist_rr = tail(rr_hist, 180)
+        hist_fpr = tail(fpr_est, 180)
+
+        def median_last(arr, n=30, default_val=0.0):
+            arr = np.asarray(arr)
+            if arr.size == 0:
+                return float(default_val)
+            window = arr[-n:] if arr.size >= n else arr
+            return float(np.nanmedian(window))
+
+        smoothed_last_historical_rbp = median_last(hist_rbp, 30, 0.0)
+        smoothed_last_historical_rr = median_last(hist_rr, 30, 0.5)
+        smoothed_last_historical_fpr = median_last(hist_fpr, 30, 0.0)
 
         result = (
             offline_data, smoothed_last_historical_rbp, smoothed_last_historical_rr,
