@@ -141,54 +141,85 @@ class SimulationRunner:
         logger.info("Loading historical data...")
         
         if self.historical_data_file.exists():
-            logger.info("Found existing historical data file, loading...")
-            try:
-                with open(self.historical_data_file, 'rb') as f:
-                    self.historical_data = pickle.load(f)
-                # Always derive dates from offline_data length anchored to 'yesterday'
-                # to avoid stale meta storing an old current_date before FIP-81 activation.
-                loaded_start_date = None
-                loaded_current_date = None
-                if self.historical_meta_file.exists():
-                    try:
-                        meta = json.load(open(self.historical_meta_file, 'r'))
-                        loaded_start_date = date.fromisoformat(meta.get('start_date'))
-                        loaded_current_date = date.fromisoformat(meta.get('current_date'))
-                        logger.info(f"Historical data meta loaded: start_date={loaded_start_date}, current_date={loaded_current_date}")
-                    except Exception as me:
-                        logger.warning(f"Failed to parse meta file: {me}")
-                # Derive dates from offline_data length anchored at 'yesterday'
+            logger.info("Found existing historical data file, checking if it's current...")
+            
+            # Check if data is stale (from a different date than today)
+            data_is_stale = False
+            if self.historical_meta_file.exists():
                 try:
-                    offline_data = self.historical_data[0]
-                    hist_len = len(offline_data["historical_raw_power_eib"])  # inclusive length
-                    # Choose current_date as yesterday to be stable and derive start_date by length
-                    derived_current = date.today() - timedelta(days=1)
-                    derived_start = derived_current - timedelta(days=max(hist_len - 1, 0))
-                except Exception as de:
-                    logger.warning(f"Failed to derive dates from offline data: {de}")
-                    derived_start = None
-                    derived_current = None
-
-                # Always prefer derived (anchored to yesterday) to avoid stale meta
-                self.start_date = derived_start or loaded_start_date
-                self.current_date = derived_current or loaded_current_date
-
-                # Write meta reflecting derived dates
-                if self.start_date and self.current_date:
+                    meta = json.load(open(self.historical_meta_file, 'r'))
+                    # Get the date when the data was loaded (stored in meta)
+                    data_load_date = meta.get('load_date')
+                    if data_load_date:
+                        loaded_date = date.fromisoformat(data_load_date)
+                        today = date.today()
+                        if loaded_date != today:
+                            logger.info(f"Historical data is stale: loaded on {loaded_date}, today is {today}")
+                            data_is_stale = True
+                        else:
+                            logger.info(f"Historical data is current: loaded today ({today})")
+                    else:
+                        logger.info("No load_date in meta file, assuming data is stale")
+                        data_is_stale = True
+                except Exception as me:
+                    logger.warning(f"Failed to parse meta file, assuming stale: {me}")
+                    data_is_stale = True
+            else:
+                logger.info("No meta file found, assuming data is stale")
+                data_is_stale = True
+            
+            if not data_is_stale:
+                logger.info("Loading existing historical data...")
+                try:
+                    with open(self.historical_data_file, 'rb') as f:
+                        self.historical_data = pickle.load(f)
+                    # Always derive dates from offline_data length anchored to 'yesterday'
+                    # to avoid stale meta storing an old current_date before FIP-81 activation.
+                    loaded_start_date = None
+                    loaded_current_date = None
+                    if self.historical_meta_file.exists():
+                        try:
+                            meta = json.load(open(self.historical_meta_file, 'r'))
+                            loaded_start_date = date.fromisoformat(meta.get('start_date'))
+                            loaded_current_date = date.fromisoformat(meta.get('current_date'))
+                            logger.info(f"Historical data meta loaded: start_date={loaded_start_date}, current_date={loaded_current_date}")
+                        except Exception as me:
+                            logger.warning(f"Failed to parse meta file: {me}")
+                    # Derive dates from offline_data length anchored at 'yesterday'
                     try:
-                        with open(self.historical_meta_file, 'w') as mf:
-                            json.dump({
-                                'start_date': self.start_date.isoformat(),
-                                'current_date': self.current_date.isoformat(),
-                            }, mf)
-                    except Exception as me2:
-                        logger.warning(f"Failed to write meta file: {me2}")
+                        offline_data = self.historical_data[0]
+                        hist_len = len(offline_data["historical_raw_power_eib"])  # inclusive length
+                        # Choose current_date as yesterday to be stable and derive start_date by length
+                        derived_current = date.today() - timedelta(days=1)
+                        derived_start = derived_current - timedelta(days=max(hist_len - 1, 0))
+                    except Exception as de:
+                        logger.warning(f"Failed to derive dates from offline data: {de}")
+                        derived_start = None
+                        derived_current = None
 
-                logger.info("Historical data loaded successfully from file")
-                return
-            except Exception as e:
-                logger.warning(f"Failed to load existing historical data: {e}")
-                logger.info("Will fetch fresh data...")
+                    # Always prefer derived (anchored to yesterday) to avoid stale meta
+                    self.start_date = derived_start or loaded_start_date
+                    self.current_date = derived_current or loaded_current_date
+
+                    # Write meta reflecting derived dates
+                    if self.start_date and self.current_date:
+                        try:
+                            with open(self.historical_meta_file, 'w') as mf:
+                                json.dump({
+                                    'start_date': self.start_date.isoformat(),
+                                    'current_date': self.current_date.isoformat(),
+                                    'load_date': date.today().isoformat(),
+                                }, mf)
+                        except Exception as me2:
+                            logger.warning(f"Failed to write meta file: {me2}")
+
+                    logger.info("Historical data loaded successfully from file")
+                    return
+                except Exception as e:
+                    logger.warning(f"Failed to load existing historical data: {e}")
+                    logger.info("Will fetch fresh data...")
+            else:
+                logger.info("Historical data is stale, fetching fresh data...")
         
         # Setup dates
         current_date = date.today() - timedelta(days= 1)
@@ -218,6 +249,7 @@ class SimulationRunner:
                     json.dump({
                         'start_date': self.start_date.isoformat(),
                         'current_date': self.current_date.isoformat(),
+                        'load_date': date.today().isoformat(),
                     }, mf)
             except Exception as me:
                 logger.warning(f"Failed to write historical data meta: {me}")

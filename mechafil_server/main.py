@@ -358,10 +358,12 @@ async def simulate(req: SimulationRequest):
     sector_duration = req.sector_duration_days if req.sector_duration_days is not None else 540
 
     # Default vectors: use smoothed last-30-days medians when not provided
+    # Ensure forecast vectors match the minimum length needed for JAX calculations
+    min_forecast_len = max(78, forecast_len)  # Use same buffer as scheduled expiration vectors
     try:
-        rbp_vec = _to_jax_vector(req.rbp if req.rbp is not None else smoothed_rbp, forecast_len, "rbp")
-        rr_vec = _to_jax_vector(req.rr if req.rr is not None else smoothed_rr, forecast_len, "rr")
-        fpr_vec = _to_jax_vector(req.fpr if req.fpr is not None else smoothed_fpr, forecast_len, "fpr")
+        rbp_vec = _to_jax_vector(req.rbp if req.rbp is not None else smoothed_rbp, min_forecast_len, "rbp")
+        rr_vec = _to_jax_vector(req.rr if req.rr is not None else smoothed_rr, min_forecast_len, "rr")
+        fpr_vec = _to_jax_vector(req.fpr if req.fpr is not None else smoothed_fpr, min_forecast_len, "fpr")
     except ValueError as ve:
         return SimulationError(message=str(ve))
 
@@ -406,18 +408,69 @@ async def simulate(req: SimulationRequest):
         rr_arr = jnp.array(rr_vec)
         fpr_arr = jnp.array(fpr_vec)
 
-        # No verbose debug logging; just run the simulation
+        # Extract the portion of pre-loaded data needed for this simulation window
+        # The data was loaded once for 10 years, now we extract only what's needed for forecast_len
+        offline_data_windowed = offline_data.copy()
+        
+        # Trim scheduled expiration vectors to match the forecast window
+        # Add buffer for JAX lookback calculations (minimum 78 days discovered through testing)
+        LOOKBACK_BUFFER = max(78, forecast_len)  # Ensure at least 78 days or forecast length, whichever is larger
+        effective_length = min(LOOKBACK_BUFFER, len(offline_data_windowed.get('rb_known_scheduled_expire_vec', [])))
+        
+        if 'rb_known_scheduled_expire_vec' in offline_data_windowed:
+            rb_expire_vec = offline_data_windowed['rb_known_scheduled_expire_vec']
+            logger.info(f"rb_expire_vec original length: {len(rb_expire_vec)}, forecast_len: {forecast_len}, effective_length: {effective_length}")
+            if len(rb_expire_vec) > effective_length:
+                offline_data_windowed['rb_known_scheduled_expire_vec'] = rb_expire_vec[:effective_length]
+                logger.info(f"rb_expire_vec trimmed to length: {len(offline_data_windowed['rb_known_scheduled_expire_vec'])}")
+                
+        if 'qa_known_scheduled_expire_vec' in offline_data_windowed:
+            qa_expire_vec = offline_data_windowed['qa_known_scheduled_expire_vec']
+            logger.info(f"qa_expire_vec original length: {len(qa_expire_vec)}, forecast_len: {forecast_len}, effective_length: {effective_length}")
+            if len(qa_expire_vec) > effective_length:
+                offline_data_windowed['qa_known_scheduled_expire_vec'] = qa_expire_vec[:effective_length]
+                logger.info(f"qa_expire_vec trimmed to length: {len(offline_data_windowed['qa_known_scheduled_expire_vec'])}")
+                
+        # For pledge release, use forecast_len as it doesn't need the same lookback buffer  
+        if 'known_scheduled_pledge_release_full_vec' in offline_data_windowed:
+            pledge_release_vec = offline_data_windowed['known_scheduled_pledge_release_full_vec'] 
+            logger.info(f"pledge_release_vec original length: {len(pledge_release_vec)}, forecast_len: {forecast_len}")
+            if len(pledge_release_vec) > forecast_len:
+                offline_data_windowed['known_scheduled_pledge_release_full_vec'] = pledge_release_vec[:forecast_len]
+                logger.info(f"pledge_release_vec trimmed to length: {len(offline_data_windowed['known_scheduled_pledge_release_full_vec'])}")
+        
+        logger.info(f"Simulation parameters: forecast_len={forecast_len}, rbp_len={len(rbp_arr)}, rr_len={len(rr_arr)}, fpr_len={len(fpr_arr)}")
+        
+        # Debug: Check input dates to simulation
+        logger.info(f"Input dates to simulation:")
+        logger.info(f"  start_date: {start_date} (type: {type(start_date)})")
+        logger.info(f"  current_date: {current_date} (type: {type(current_date)})")
+        logger.info(f"  forecast_len: {forecast_len}")
+        logger.info(f"  sector_duration: {sector_duration}")
+        logger.info(f"  Historical data length: {len(offline_data_windowed.get('historical_raw_power_eib', []))}")
+        logger.info(f"  Days between start and current: {(current_date - start_date).days}")
+        logger.info(f"  Expected total simulation days: {(current_date - start_date).days + forecast_len}")
 
         results = mechafil_sim.run_sim(
             rbp_arr, rr_arr, fpr_arr,
             lock_target,
             start_date,
             current_date,
-            forecast_len,
+            min_forecast_len,
             sector_duration,
-            offline_data,
+            offline_data_windowed,
             use_available_supply=False,
         )
+        
+        # Trim results back to the requested forecast length if we used a buffer
+        if min_forecast_len > forecast_len:
+            logger.info(f"Trimming results from {min_forecast_len} to {forecast_len} days")
+            historical_len = (current_date - start_date).days
+            target_total_len = historical_len + forecast_len
+            
+            for key, value in results.items():
+                if hasattr(value, '__len__') and len(value) > target_total_len:
+                    results[key] = value[:target_total_len]
     except Exception as e:
         logger.error(f"Simulation error: {e}")
         raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
@@ -513,7 +566,24 @@ async def get_latest_simulation():
     try:
         with open(latest_file, 'r') as f:
             data = json.load(f)
-        return data
+        # Sanitize NaN/Inf before returning (Starlette disallows them)
+        def _sanitize(obj):
+            import math
+            if isinstance(obj, float):
+                return obj if math.isfinite(obj) else None
+            if isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_sanitize(x) for x in obj]
+            return obj
+        sanitized = _sanitize(data)
+        # Optionally rewrite file with sanitized values to prevent future errors
+        try:
+            with open(latest_file, 'w') as f:
+                json.dump(sanitized, f)
+        except Exception:
+            pass
+        return sanitized
     except Exception as e:
         logger.error(f"Failed to read latest_simulation.json: {e}")
         raise HTTPException(status_code=500, detail="Failed to read saved simulation file")
