@@ -18,6 +18,7 @@ import pystarboard.data
 
 logger = logging.getLogger(__name__)
 STARTUP_DATE = date(2022, 10, 10)
+WINDOW_DAYS = 10 * 365
 
 
 class Data:
@@ -39,6 +40,7 @@ class Data:
         self.smoothed_hist_rbp: float = 0.0
         self.smoothed_hist_rr: float = 0.0
         self.smoothed_hist_fpr: float = 0.0
+
 
     # ------------------------------------------------------------------
     # Data fetching
@@ -97,7 +99,7 @@ class Data:
         # Setup dates
         current_date = date.today() - timedelta(days=1)
         start_date = STARTUP_DATE
-        end_date = current_date + timedelta(days=365 * 10)
+        end_date = current_date + timedelta(days=WINDOW_DAYS)
 
         logger.info(f"Fetching historical data from {start_date} to {current_date}...")
 
