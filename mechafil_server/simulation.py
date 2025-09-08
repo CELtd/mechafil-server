@@ -207,7 +207,7 @@ class SimulationRunner:
                             with open(self.historical_meta_file, 'w') as mf:
                                 json.dump({
                                     'start_date': self.start_date.isoformat(),
-                                    'current_date': self.current_date.isoformat(),
+                                    'current_date': date.today().isoformat(),
                                     'load_date': date.today().isoformat(),
                                 }, mf)
                         except Exception as me2:
