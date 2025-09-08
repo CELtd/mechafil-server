@@ -42,3 +42,6 @@ mechafil-server/data/*.json
 # Auth/secrets (example paths)
 auths/*.json
 *.token
+
+# Data
+data/*
