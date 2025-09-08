@@ -171,49 +171,7 @@ class SimulationRunner:
             if not data_is_stale:
                 logger.info("Loading existing historical data...")
                 try:
-                    with open(self.historical_data_file, 'rb') as f:
-                        self.historical_data = pickle.load(f)
-                    # Always derive dates from offline_data length anchored to 'yesterday'
-                    # to avoid stale meta storing an old current_date before FIP-81 activation.
-                    loaded_start_date = None
-                    loaded_current_date = None
-                    if self.historical_meta_file.exists():
-                        try:
-                            meta = json.load(open(self.historical_meta_file, 'r'))
-                            loaded_start_date = date.fromisoformat(meta.get('start_date'))
-                            loaded_current_date = date.fromisoformat(meta.get('current_date'))
-                            logger.info(f"Historical data meta loaded: start_date={loaded_start_date}, current_date={loaded_current_date}")
-                        except Exception as me:
-                            logger.warning(f"Failed to parse meta file: {me}")
-                    # Derive dates from offline_data length anchored at 'yesterday'
-                    try:
-                        offline_data = self.historical_data[0]
-                        hist_len = len(offline_data["historical_raw_power_eib"])  # inclusive length
-                        # Choose current_date as yesterday to be stable and derive start_date by length
-                        derived_current = date.today() - timedelta(days=1)
-                        derived_start = derived_current - timedelta(days=max(hist_len - 1, 0))
-                    except Exception as de:
-                        logger.warning(f"Failed to derive dates from offline data: {de}")
-                        derived_start = None
-                        derived_current = None
-
-                    # Always prefer derived (anchored to yesterday) to avoid stale meta
-                    self.start_date = derived_start or loaded_start_date
-                    self.current_date = derived_current or loaded_current_date
-
-                    # Write meta reflecting derived dates
-                    if self.start_date and self.current_date:
-                        try:
-                            with open(self.historical_meta_file, 'w') as mf:
-                                json.dump({
-                                    'start_date': self.start_date.isoformat(),
-                                    'current_date': date.today().isoformat(),
-                                    'load_date': date.today().isoformat(),
-                                }, mf)
-                        except Exception as me2:
-                            logger.warning(f"Failed to write meta file: {me2}")
-
-                    logger.info("Historical data loaded successfully from file")
+                    self.load_historical_data_file()
                     return
                 except Exception as e:
                     logger.warning(f"Failed to load existing historical data: {e}")
@@ -258,7 +216,56 @@ class SimulationRunner:
             logger.error(f"Failed to load historical data: {e}")
             logger.exception("Full traceback:")
             raise
+        
+        # Replace downloaded data with data reloaded from the file downloaded for consistency
+        self.load_historical_data_file()
             
+    def load_historical_data_file(self):
+        with open(self.historical_data_file, 'rb') as f:
+            self.historical_data = pickle.load(f)
+        # Always derive dates from offline_data length anchored to 'yesterday'
+        # to avoid stale meta storing an old current_date before FIP-81 activation.
+        loaded_start_date = None
+        loaded_current_date = None
+        if self.historical_meta_file.exists():
+            try:
+                meta = json.load(open(self.historical_meta_file, 'r'))
+                loaded_start_date = date.fromisoformat(meta.get('start_date'))
+                loaded_current_date = date.fromisoformat(meta.get('current_date'))
+                logger.info(f"Historical data meta loaded: start_date={loaded_start_date}, current_date={loaded_current_date}")
+            except Exception as me:
+                logger.warning(f"Failed to parse meta file: {me}")
+        # Derive dates from offline_data length anchored at 'yesterday'
+        try:
+            offline_data = self.historical_data[0]
+            hist_len = len(offline_data["historical_raw_power_eib"])  # inclusive length
+            # Choose current_date as yesterday to be stable and derive start_date by length
+            derived_current = date.today() - timedelta(days=1)
+            derived_start = derived_current - timedelta(days=max(hist_len - 1, 0))
+        except Exception as de:
+            logger.warning(f"Failed to derive dates from offline data: {de}")
+            derived_start = None
+            derived_current = None
+
+        # Always prefer derived (anchored to yesterday) to avoid stale meta
+        self.start_date = derived_start or loaded_start_date
+        self.current_date = derived_current or loaded_current_date
+
+        # Write meta reflecting derived dates
+        if self.start_date and self.current_date:
+            try:
+                with open(self.historical_meta_file, 'w') as mf:
+                    json.dump({
+                        'start_date': self.start_date.isoformat(),
+                        'current_date': date.today().isoformat(),
+                        'load_date': date.today().isoformat(),
+                    }, mf)
+            except Exception as me2:
+                logger.warning(f"Failed to write meta file: {me2}")
+
+        logger.info("Historical data loaded successfully from file")
+        return
+
     def get_historical_data_summary(self) -> Dict[str, Any]:
         """Get a summary of the loaded historical data."""
         if self.historical_data is None:
