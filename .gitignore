@@ -43,5 +43,9 @@ mechafil-server/data/*.json
 auths/*.json
 *.token
 
-# Data
+# Data & test
 data/*
+test/
+clean_data.sh
+selected_results.json
+api_results.json
