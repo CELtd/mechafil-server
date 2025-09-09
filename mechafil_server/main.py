@@ -206,12 +206,14 @@ async def get_historical_data_full():
 
 
 @app.post("/simulate", tags=["Simulation"])
-async def simulate():
+async def simulate(req: SimulationRequest):
     """
     Run a Filecoin forecast simulation.
 
     Example curl:
-      curl -X POST http://localhost:8000/simulate
+      curl -X POST http://localhost:8000/simulate \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 3650, "lock_target": 0.3}'
     """
     global loaded_data
 
@@ -221,29 +223,46 @@ async def simulate():
             detail="Historical data not loaded yet; try again shortly"
         )
 
-    # Always use the default window length
-    forecast_len = WINDOW_DAYS
+    # Unpack request data with defaults from historical data
+    hist_data = loaded_data.get_historical_data()
+    if not hist_data:
+        raise RuntimeError("No historical data loaded")
+
+    # Use request values or fall back to historical data defaults
+    forecast_len = req.forecast_length_days if req.forecast_length_days is not None else WINDOW_DAYS
+    sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else 540
+    
+    # Default values from smoothed historical data
+    smoothed_rbp = hist_data["smoothed_rbp"]
+    smoothed_rr = hist_data["smoothed_rr"] 
+    smoothed_fpr = hist_data["smoothed_fpr"]
+    
+    # Use request parameters or defaults
+    rbp_value = req.rbp if req.rbp is not None else smoothed_rbp
+    rr_value = req.rr if req.rr is not None else smoothed_rr
+    fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
+    lock_target = req.lock_target if req.lock_target is not None else 0.3
 
     try:
-        hist_data = loaded_data.get_historical_data()
-        if not hist_data:
-            raise RuntimeError("No historical data loaded")
-
         offline_data = hist_data["offline_data"]
-
-        smoothed_rbp = hist_data["smoothed_rbp"]
-        smoothed_rr = hist_data["smoothed_rr"]
-        smoothed_fpr = hist_data["smoothed_fpr"]
-
         start_date = hist_data["start_date"]
         current_date = hist_data["current_date"]
 
-        # Simulation parameters
-        sector_duration_days = 540
-        lock_target = 0.3
-        rbp = jnp.ones(forecast_len) * smoothed_rbp
-        rr = jnp.ones(forecast_len) * smoothed_rr
-        fpr = jnp.ones(forecast_len) * smoothed_fpr
+        # Convert parameters to JAX arrays (handle both constants and arrays)
+        if isinstance(rbp_value, list):
+            rbp = jnp.array(rbp_value)
+        else:
+            rbp = jnp.ones(forecast_len) * rbp_value
+            
+        if isinstance(rr_value, list):
+            rr = jnp.array(rr_value)
+        else:
+            rr = jnp.ones(forecast_len) * rr_value
+            
+        if isinstance(fpr_value, list):
+            fpr = jnp.array(fpr_value)
+        else:
+            fpr = jnp.ones(forecast_len) * fpr_value
 
         results = mechafil_sim.run_sim(
             rbp, rr, fpr, lock_target, start_date, current_date,
