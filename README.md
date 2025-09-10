@@ -34,6 +34,7 @@ MechaFil Server is a web service that wraps the [mechafil-jax](https://github.co
 - **`mechafil_server/data.py`**: Data processing and historical metrics calculation  
 - **`mechafil_server/models.py`**: Pydantic models for request/response validation
 - **`mechafil_server/config.py`**: Configuration management and constants
+- **`mechafil_server/scheduler.py`**: Background scheduler for automated daily data refresh
 - **`tests/`**: Production-grade test suite with API validation
 
 
@@ -82,7 +83,7 @@ SPACESCOPE_TOKEN=Bearer YOUR_TOKEN_HERE
 
 ### Initial Data Loading
 - On first startup, the server fetches and caches historical data under `mechafil-server/data/` (this may take a few minutes).
-- `current_date` is set to "yesterday." Historical arrays are harmonized to a consistent length to avoid broadcasting issues.
+- `current_date` is set to "yesterday".
 
 ### Automated Daily Refresh
 The server automatically refreshes historical data daily at a configurable time:
