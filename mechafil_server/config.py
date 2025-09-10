@@ -28,10 +28,14 @@ class Settings:
     # CORS settings
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")
     
-    # Data constants
+    # Cache 
+    CACHE_DIR: Path = Path(__file__).parent.parent / '.cache'
+
+    # Data constants and defaults
     STARTUP_DATE: date = date(2022, 10, 10)
     WINDOW_DAYS: int = 10 * 365
-    CACHE_DIR: Path = Path(__file__).parent.parent / '.cache'
+    SECTOR_DURATION_DAYS: int = 540
+    LOCK_TARGET: float = 0.3
     
     @property
     def has_spacescope_auth(self) -> bool:

@@ -231,7 +231,7 @@ async def simulate(req: SimulationRequest):
 
     # Use request values or fall back to historical data defaults
     forecast_len = req.forecast_length_days if req.forecast_length_days is not None else settings.WINDOW_DAYS
-    sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else 540
+    sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else settings.SECTOR_DURATION_DAYS
     
     # Default values from smoothed historical data
     smoothed_rbp = hist_data["smoothed_rbp"]
@@ -242,7 +242,7 @@ async def simulate(req: SimulationRequest):
     rbp_value = req.rbp if req.rbp is not None else smoothed_rbp
     rr_value = req.rr if req.rr is not None else smoothed_rr
     fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
-    lock_target = req.lock_target if req.lock_target is not None else 0.3
+    lock_target = req.lock_target if req.lock_target is not None else settings.LOCK_TARGET
 
     try:
         #offline_data = hist_data["offline_data"]
