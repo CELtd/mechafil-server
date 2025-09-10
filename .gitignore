@@ -45,6 +45,7 @@ auths/*.json
 
 # Data & test
 .cache/
+cache_directory
 .claude
 test/
 clean_data.sh
