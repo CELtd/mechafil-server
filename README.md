@@ -17,7 +17,7 @@ MechaFil Server is a web service that wraps the [mechafil-jax](https://github.co
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   FastAPI       │    │   mechafil-jax   │    │   Spacescope    │
-│   Web Server    │───▶│   Simulation     │───▶│   Data Source   │
+│   Web Server    │──▶│   Simulation     │───▶│   Data Source   │
 │                 │    │   Engine         │    │                 │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
          │
@@ -82,7 +82,6 @@ SPACESCOPE_TOKEN=Bearer YOUR_TOKEN_HERE
 
 - On first startup, the server fetches and caches historical data under `mechafil-server/data/` (this may take a few minutes).
 - `current_date` is set to “yesterday.” Historical arrays are harmonized to a consistent length to avoid broadcasting issues.
-- Plots always start at 2020‑10‑15; forecast‑only series (e.g., scheduled expirations) are aligned to `current_date`.
 
 
 ## Run
