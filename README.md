@@ -103,16 +103,16 @@ Docs:
 
 ## API
 
+Core Endpoints
+- `GET /` — Root endpoint with server information and available endpoints.
+- `GET /health` — Health check endpoint with server status and JAX backend info.
+
 Historical Data
 - `GET /historical-data` — Summary of loaded historical data.
 - `GET /historical-data/full` — Full historical arrays and smoothed values.
-- `GET /sim-dates` — Effective dates and historical lengths.
 
 Simulation
 - `POST /simulate` — Run a forecast (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
-- `GET /latest-simulation` — Last `{ setup, results }` JSON.
-- `GET /latest-simulation/plots` — Base64 PNG plots (JSON; param: `max_plots`).
-- `GET /latest-simulation/plots/html` — HTML plots with historical (blue) vs forecast (red).
 
 
 ## Examples

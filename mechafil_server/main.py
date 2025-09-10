@@ -111,14 +111,15 @@ async def root():
         "message": "Mechafil Server",
         "version": "0.1.0",
         "docs": "/docs",
-        "health": "/health",
+        "redoc": "/redoc",
         "endpoints": {
-            "simulate": "/simulate (POST) - Simulation with default values",
+            "health": "/health (GET) - Server health check and JAX backend info",
+            "historical_data": "/historical-data (GET) - Historical data summary",
+            "historical_data_full": "/historical-data/full (GET) - Full historical data with arrays",
+            "simulate": "/simulate (POST) - Run Filecoin forecast simulation",
         },
-        "template_info": "Empty request '{}' uses defaults from template-request.json",
         "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}'",
-        "historical_data": "/historical-data (GET) - View loaded historical data summary",
-        "historical_data_full": "/historical-data/full (GET) - View all historical data values",
+        "template_info": "Empty request '{}' uses defaults from historical data",
     }
 
 
