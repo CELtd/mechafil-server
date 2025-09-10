@@ -128,6 +128,51 @@ class Data:
             logger.exception("Full traceback:")
             raise
             
+    def refresh_historical_data(self) -> None:
+        """Refresh historical data by clearing cache and reloading.
+        
+        This method forces a fresh fetch from the data source, bypassing any cache.
+        It's designed to be called by the scheduler for daily data updates.
+        """
+        logger.info("Refreshing historical data (forced cache bypass)...")
+        
+        try:
+            # Setup dates
+            current_date = date.today() - timedelta(days=1)
+            start_date = settings.STARTUP_DATE
+            end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
+            
+            # Clear relevant cache entries
+            cache = Cache(settings.CACHE_DIR)
+            cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+            
+            # Remove old cache entry if it exists
+            if cache_key in cache:
+                del cache[cache_key]
+                logger.info("Cleared old cache entry")
+            
+            # Fetch fresh data
+            logger.info(f"Fetching fresh historical data from {start_date} to {current_date}...")
+            data_dict = self.get_offline_data(start_date, current_date, end_date)
+            
+            # Update instance fields
+            self.historical_data = data_dict
+            self.start_date = start_date
+            self.current_date = current_date
+            self.smoothed_hist_rbp = data_dict["smoothed_rbp"]
+            self.smoothed_hist_rr = data_dict["smoothed_rr"]
+            self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
+            
+            # Save new data to cache
+            cache.set(cache_key, data_dict)
+            
+            logger.info("Historical data refreshed and cached successfully!")
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh historical data: {e}")
+            logger.exception("Full traceback:")
+            # Don't raise here - we want the server to continue running even if refresh fails
+            
     # ------------------------------------------------------------------
     # Public getters
     # ------------------------------------------------------------------

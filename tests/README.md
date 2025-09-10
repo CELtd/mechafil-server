@@ -161,6 +161,7 @@ poetry run pytest tests/ --cov=mechafil_server --cov-report=html
 
 ### Test Configuration
 
+#### pytest Configuration
 ```toml
 # pyproject.toml
 [tool.pytest.ini_options]
@@ -172,6 +173,20 @@ markers = [
     "integration: marks tests as integration tests",
 ]
 ```
+
+#### Test Server Configuration
+The test server runs on port 8001 with the following configuration:
+- **Host**: `127.0.0.1` (localhost only)
+- **Port**: `8001` (different from production port 8000)
+- **Data Refresh**: Disabled during tests (uses cached data only)
+- **Environment**: Separate test cache directory to avoid conflicts
+- **Authentication**: Uses same Spacescope credentials as development server
+
+Test fixtures automatically:
+- Start server before tests requiring it
+- Configure separate cache directory (`tests/cache_directory/`)
+- Stop server after all tests complete
+- Handle server startup failures gracefully
 
 ## Migration from Shell Scripts
 
