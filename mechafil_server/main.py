@@ -20,7 +20,8 @@ from .models import (
     SimulationRequest,
     SimulationError,
 )
-from .data import Data, WINDOW_DAYS
+from .data import Data
+from .config import settings
 
 # Load environment variables from common locations
 load_dotenv()
@@ -36,7 +37,7 @@ except Exception:
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, settings.LOG_LEVEL.upper()),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: restrict in production
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -229,7 +230,7 @@ async def simulate(req: SimulationRequest):
         raise RuntimeError("No historical data loaded")
 
     # Use request values or fall back to historical data defaults
-    forecast_len = req.forecast_length_days if req.forecast_length_days is not None else WINDOW_DAYS
+    forecast_len = req.forecast_length_days if req.forecast_length_days is not None else settings.WINDOW_DAYS
     sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else 540
     
     # Default values from smoothed historical data
@@ -297,9 +298,9 @@ def main():
     """Entry point for running the server."""
     import uvicorn
 
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    reload = os.getenv("RELOAD", "false").lower() == "true"
+    host = settings.HOST
+    port = settings.PORT
+    reload = settings.RELOAD
 
     logger.info(f"Starting server on {host}:{port}")
 

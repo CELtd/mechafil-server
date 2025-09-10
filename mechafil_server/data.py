@@ -17,12 +17,9 @@ import pandas as pd
 
 from mechafil_jax.data import get_simulation_data
 import pystarboard.data
+from .config import settings
 
 logger = logging.getLogger(__name__)
-## TODO: Insert this into the constants and loaded in the system at startup and always accessible
-STARTUP_DATE = date(2022, 10, 10)
-WINDOW_DAYS = 10 * 365
-CACHE_DIR = Path(__file__).parent.parent / '.cache'
 
 
 class Data:
@@ -50,14 +47,8 @@ class Data:
         """Fetch offline data and compute smoothed historical metrics."""
         logger.info(f"Loading offline data from {start_date} to {current_date} (forecast to {end_date})")
 
-        # Load Spacescope auth from environment
-        token = os.getenv('SPACESCOPE_TOKEN')
-        auth_file = os.getenv('SPACESCOPE_AUTH_FILE')
-        bearer_or_file = token or (auth_file if auth_file and os.path.exists(auth_file) else None)
-        if not bearer_or_file:
-            raise RuntimeError(
-                "Missing Spacescope auth. Set SPACESCOPE_TOKEN or SPACESCOPE_AUTH_FILE in the environment."
-            )
+        # Get Spacescope auth from config
+        bearer_or_file = settings.get_spacescope_auth()
 
         offline_data = get_simulation_data(bearer_or_file, start_date, current_date, end_date)
 
@@ -90,11 +81,11 @@ class Data:
         
         # Setup dates
         current_date = date.today() - timedelta(days=1)
-        start_date = STARTUP_DATE
-        end_date = current_date + timedelta(days=WINDOW_DAYS)
+        start_date = settings.STARTUP_DATE
+        end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
         
         # Load cache
-        cache = Cache(CACHE_DIR)
+        cache = Cache(settings.CACHE_DIR)
         cache_key = f"offline_data_{start_date}{current_date}{end_date}"
         cached_result = cache.get(cache_key)
 
