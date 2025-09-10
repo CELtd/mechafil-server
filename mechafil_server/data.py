@@ -8,6 +8,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Union, Any, Tuple
 from datetime import date, timedelta
+from diskcache import Cache
+
 
 import jax.numpy as jnp
 import numpy as np
@@ -17,8 +19,10 @@ from mechafil_jax.data import get_simulation_data
 import pystarboard.data
 
 logger = logging.getLogger(__name__)
+## TODO: Insert this into the constants and loaded in the system at startup and always accessible
 STARTUP_DATE = date(2022, 10, 10)
 WINDOW_DAYS = 10 * 365
+CACHE_DIR = Path(__file__).parent.parent / '.cache'
 
 
 class Data:
@@ -27,10 +31,6 @@ class Data:
     def __init__(self):
         """Initialize the simulation runner."""
         self.historical_data: Dict[str, Any] | None = None
-        self.data_dir = Path(__file__).parent.parent / "data"
-        self.data_dir.mkdir(exist_ok=True)
-        self.historical_data_file = self.data_dir / "historical_data.pkl"
-        self.historical_meta_file = self.data_dir / "historical_data_meta.json"
 
         # Dates used for loading historical data
         self.start_date: date | None = None
@@ -85,21 +85,34 @@ class Data:
 
     def load_historical_data(self) -> None:
         """Load historical data from cache if fresh, otherwise fetch new."""
+
         logger.info("Loading historical data...")
-
-        if self.historical_data_file.exists():
-            if not self._is_data_stale():
-                try:
-                    self.load_historical_data_file()
-                    return
-                except Exception as e:
-                    logger.warning(f"Failed to load existing historical data: {e}")
-                    logger.info("Will fetch fresh data...")
-
+        
         # Setup dates
         current_date = date.today() - timedelta(days=1)
         start_date = STARTUP_DATE
         end_date = current_date + timedelta(days=WINDOW_DAYS)
+        
+        # Load cache
+        cache = Cache(CACHE_DIR)
+        cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+        cached_result = cache.get(cache_key)
+
+        if cached_result is not None:
+            try:
+                # Save into self fields
+                self.historical_data = cached_result
+                self.start_date = start_date
+                self.current_date = current_date
+                self.smoothed_hist_rbp = cached_result["smoothed_rbp"]
+                self.smoothed_hist_rr = cached_result["smoothed_rr"]
+                self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
+                logger.info("Historical data loaded from cache successfully!")
+                return
+                
+            except Exception as e:
+                logger.warning(f"Failed to load existing historical data: {e}")
+                logger.info("Will fetch fresh data...")
 
         logger.info(f"Fetching historical data from {start_date} to {current_date}...")
 
@@ -114,62 +127,16 @@ class Data:
             self.smoothed_hist_rr = data_dict["smoothed_rr"]
             self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
 
-            # Save everything to pickle
-            payload = {
-                "historical_data": self.historical_data,
-                "start_date": self.start_date,
-                "current_date": self.current_date,
-                "smoothed_hist_rbp": self.smoothed_hist_rbp,
-                "smoothed_hist_rr": self.smoothed_hist_rr,
-                "smoothed_hist_fpr": self.smoothed_hist_fpr,
-            }
-            with open(self.historical_data_file, "wb") as f:
-                pickle.dump(payload, f)
+            # Save everything to cache
+            cache.set(cache_key, data_dict) 
 
             logger.info("Historical data loaded and saved successfully!")
-
-            # Save meta alongside data
-            with open(self.historical_meta_file, "w") as mf:
-                json.dump({
-                    "start_date": self.start_date.isoformat(),
-                    "current_date": self.current_date.isoformat(),
-                    "load_date": date.today().isoformat(),
-                }, mf)
 
         except Exception as e:
             logger.error(f"Failed to load historical data: {e}")
             logger.exception("Full traceback:")
             raise
-
-    def load_historical_data_file(self) -> None:
-        """Load historical data and associated fields from pickle."""
-        with open(self.historical_data_file, "rb") as f:
-            payload = pickle.load(f)
-
-        # Restore fields
-        self.historical_data = payload.get("historical_data")
-        self.start_date = payload.get("start_date")
-        self.current_date = payload.get("current_date")
-        self.smoothed_hist_rbp = payload.get("smoothed_hist_rbp", 0.0)
-        self.smoothed_hist_rr = payload.get("smoothed_hist_rr", 0.0)
-        self.smoothed_hist_fpr = payload.get("smoothed_hist_fpr", 0.0)
-
-        logger.info(f"Historical data loaded from file (start={self.start_date}, current={self.current_date})")
-
-    def _is_data_stale(self) -> bool:
-        """Check if cached data is stale (not from today)."""
-        if not self.historical_meta_file.exists():
-            return True
-        try:
-            meta = json.load(open(self.historical_meta_file, "r"))
-            data_load_date = meta.get("load_date")
-            if data_load_date:
-                return date.fromisoformat(data_load_date) != date.today()
-        except Exception as e:
-            logger.warning(f"Failed to parse meta file, assuming stale: {e}")
-            return True
-        return False
-
+            
     # ------------------------------------------------------------------
     # Public getters
     # ------------------------------------------------------------------

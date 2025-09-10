@@ -243,6 +243,9 @@ async def simulate(req: SimulationRequest):
     fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
     lock_target = req.lock_target if req.lock_target is not None else 0.3
 
+    ### TODO: Change the constants and put them in a place
+    ### TODO: Look at what claude told you of the parameters and their size. Craft the correct size of your things as well
+
     try:
         offline_data = hist_data["offline_data"]
         start_date = hist_data["start_date"]

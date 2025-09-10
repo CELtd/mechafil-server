@@ -44,7 +44,8 @@ auths/*.json
 *.token
 
 # Data & test
-data/*
+.cache/
+.claude
 test/
 clean_data.sh
 selected_results.json
