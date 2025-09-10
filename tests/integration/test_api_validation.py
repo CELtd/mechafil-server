@@ -30,7 +30,6 @@ class TestAPIValidation:
     ):
         """Test that /historical-data/full matches offline historical data simulation.
         
-        This replicates the test/historical_data/test.sh logic.
         """
         # Get API response
         response = api_client.get("/historical-data/full")
@@ -61,7 +60,6 @@ class TestAPIValidation:
     ):
         """Test /simulate with default parameters matches offline simulation.
         
-        This replicates the test/default_simulation/test.sh logic.
         """
         # Get API response with default parameters
         response = api_client.post("/simulate", json={})
@@ -92,7 +90,6 @@ class TestAPIValidation:
     ):
         """Test /simulate with custom lock_target matches offline simulation.
         
-        This replicates the test/lock_target/test.sh logic.
         """
         params = {
             "forecast_length_days": 365,
@@ -129,7 +126,6 @@ class TestAPIValidation:
     ):
         """Test /simulate with custom forecast_length_days matches offline simulation.
         
-        This replicates the test/forecast_len/test.sh logic.
         """
         params = {
             "forecast_length_days": 365
@@ -164,7 +160,6 @@ class TestAPIValidation:
     ):
         """Test /simulate with custom sector_duration_days matches offline simulation.
         
-        This replicates the test/sector_duration/test.sh logic.
         """
         params = {
             "forecast_length_days": 365,
