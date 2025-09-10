@@ -186,6 +186,18 @@ class Data:
         }
 
 
+    def trim_data_for_simulation(self, forecast_len):
+
+        hist_data = self.historical_data['offline_data']
+        new_data = hist_data.copy()
+        hist_date_len = int((self.current_date - self.start_date).days)
+        known_scheduled_pledge_release_len = hist_date_len + forecast_len
+        new_data['rb_known_scheduled_expire_vec'] = hist_data['rb_known_scheduled_expire_vec'][:forecast_len]
+        new_data['qa_known_scheduled_expire_vec'] = hist_data['qa_known_scheduled_expire_vec'][:forecast_len]
+        new_data['known_scheduled_pledge_release_full_vec'] = hist_data['known_scheduled_pledge_release_full_vec'][:known_scheduled_pledge_release_len]
+
+        return new_data
+
 # ------------------------------------------------------------------
 # Utility functions
 # ------------------------------------------------------------------

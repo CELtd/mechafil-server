@@ -244,13 +244,11 @@ async def simulate(req: SimulationRequest):
     fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
     lock_target = req.lock_target if req.lock_target is not None else 0.3
 
-    ### TODO: Change the constants and put them in a place
-    ### TODO: Look at what claude told you of the parameters and their size. Craft the correct size of your things as well
-
     try:
-        offline_data = hist_data["offline_data"]
+        #offline_data = hist_data["offline_data"]
         start_date = hist_data["start_date"]
         current_date = hist_data["current_date"]
+        simulation_offline_data = loaded_data.trim_data_for_simulation(forecast_len)
 
         # Convert parameters to JAX arrays (handle both constants and arrays)
         if isinstance(rbp_value, list):
@@ -270,7 +268,7 @@ async def simulate(req: SimulationRequest):
 
         results = mechafil_sim.run_sim(
             rbp, rr, fpr, lock_target, start_date, current_date,
-            forecast_len, sector_duration_days, offline_data,
+            forecast_len, sector_duration_days, simulation_offline_data,
             use_available_supply=False
         )
 
