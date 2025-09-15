@@ -33,6 +33,7 @@ class Settings:
 
     # Data constants and defaults
     STARTUP_DATE: date = date(2022, 10, 10)
+    TIMEDELTA : int = 2 # Days
     WINDOW_DAYS: int = 10 * 365
     SECTOR_DURATION_DAYS: int = 540
     LOCK_TARGET: float = 0.3

@@ -80,7 +80,7 @@ class Data:
         logger.info("Loading historical data...")
         
         # Setup dates
-        current_date = date.today() - timedelta(days=1)
+        current_date = date.today() - timedelta(days=settings.TIMEDELTA)
         start_date = settings.STARTUP_DATE
         end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
         
@@ -138,7 +138,7 @@ class Data:
         
         try:
             # Setup dates
-            current_date = date.today() - timedelta(days=1)
+            current_date = date.today() - timedelta(days=settings.TIMEDELTA)
             start_date = settings.STARTUP_DATE
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
             

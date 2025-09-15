@@ -51,7 +51,7 @@ def run_simulation(forecast_length_days=10*365, sector_duration_days=540, lock_t
     # Main Logic
     ###########################
     print("Loading historical data ...")
-    current_date = date.today() - timedelta(days=1)
+    current_date = date.today() - timedelta(days=2)
     start_date = date(2022, 10, 10)
     end_date = current_date + timedelta(days=forecast_length_days)
     
