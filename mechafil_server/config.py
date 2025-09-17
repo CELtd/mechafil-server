@@ -32,7 +32,7 @@ class Settings:
     CACHE_DIR: Path = Path(__file__).parent.parent / '.cache'
 
     # Data constants and defaults
-    STARTUP_DATE: date = date(2022, 10, 10)
+    STARTUP_DATE: date = date(2025, 1, 1)
     TIMEDELTA : int = 2 # Days
     WINDOW_DAYS: int = 10 * 365
     SECTOR_DURATION_DAYS: int = 540

@@ -203,16 +203,16 @@ async def get_historical_data_full():
         return {
             "message": "Complete historical data",
             "smoothed_metrics": {
-                "raw_byte_power": float(smoothed_rbp),
-                "renewal_rate": float(smoothed_rr),
-                "filplus_rate": float(smoothed_fpr),
+                "raw_byte_power": round(float(smoothed_rbp), 2),
+                "renewal_rate": round(float(smoothed_rr), 2),
+                "filplus_rate": round(float(smoothed_fpr), 2),
             },
             "historical_arrays": {
-                "raw_byte_power": [float(x) for x in hist_rbp],
-                "renewal_rate": [float(x) for x in hist_rr],
-                "filplus_rate": [float(x) for x in hist_fpr],
+                "raw_byte_power": [round(float(x), 2) for x in hist_rbp],
+                "renewal_rate": [round(float(x), 2) for x in hist_rr],
+                "filplus_rate": [round(float(x), 2) for x in hist_fpr],
             },
-            "offline_data": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in offline_data.items()},
+            "offline_data": {k: ([round(float(item), 2) for item in v] if hasattr(v, "__iter__") and not isinstance(v, str) else round(float(v), 2) if isinstance(v, (int, float)) else v) for k, v in offline_data.items()},
         }
     except Exception as e:
         logger.error(f"Error retrieving full historical data: {e}")
@@ -293,12 +293,12 @@ async def simulate(req: SimulationRequest):
                 "forecast_length_days": forecast_len
             },
             "smoothed_metrics": {
-                "raw_byte_power": float(smoothed_rbp),
-                "renewal_rate": float(smoothed_rr),
-                "filplus_rate": float(smoothed_fpr),
+                "raw_byte_power": round(float(smoothed_rbp), 2),
+                "renewal_rate": round(float(smoothed_rr), 2),
+                "filplus_rate": round(float(smoothed_fpr), 2),
             },
             "simulation_output": {
-                k: (v.tolist() if hasattr(v, "tolist") else v)
+                k: ([round(float(item), 2) for item in v] if hasattr(v, "__iter__") and not isinstance(v, str) else round(float(v), 2) if isinstance(v, (int, float)) else v)
                 for k, v in results.items()
             },
         }
