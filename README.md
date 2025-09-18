@@ -132,7 +132,8 @@ Historical Data
 - `GET /historical-data/full` — Full historical arrays and smoothed values.
 
 Simulation
-- `POST /simulate` — Run a forecast (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
+- `POST /simulate` — Run a forecast with weekly averaged results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
+- `POST /simulate/full` — Run a forecast with full detailed results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
 
 
 ## Examples
@@ -153,21 +154,21 @@ All parameters are optional. Defaults are calculated from historical data or con
 
 **Minimal request (all defaults):**
 ```bash
-curl -X POST http://localhost:8000/simulate \
+curl -X POST http://localhost:8000/simulate/full \
   -H 'Content-Type: application/json' \
   -d '{}'
 ```
 
 **1-year forecast:**
 ```bash
-curl -X POST http://localhost:8000/simulate \
+curl -X POST http://localhost:8000/simulate/full \
   -H 'Content-Type: application/json' \
   -d '{"forecast_length_days": 365}'
 ```
 
 **Complete parameter set:**
 ```bash
-curl -X POST http://localhost:8000/simulate \
+curl -X POST http://localhost:8000/simulate/full \
   -H 'Content-Type: application/json' \
   -d '{
     "rbp": 3.38,
@@ -183,7 +184,7 @@ curl -X POST http://localhost:8000/simulate \
 
 **Long-term forecast (10 years):**
 ```bash
-curl -X POST http://localhost:8000/simulate \
+curl -X POST http://localhost:8000/simulate/full \
   -H 'Content-Type: application/json' \
   -d '{
     "forecast_length_days": 3650,
@@ -193,7 +194,7 @@ curl -X POST http://localhost:8000/simulate \
 
 **Time-varying parameters using arrays:**
 ```bash
-curl -X POST http://localhost:8000/simulate \
+curl -X POST http://localhost:8000/simulate/full \
   -H 'Content-Type: application/json' \
   -d '{
     "rbp": [3.0, 3.5, 4.0],

@@ -62,7 +62,7 @@ class TestAPIValidation:
         
         """
         # Get API response with default parameters
-        response = api_client.post("/simulate", json={})
+        response = api_client.post("/simulate/full", json={})
         assert response.status_code == 200
         api_data = response.json()
         
@@ -98,7 +98,7 @@ class TestAPIValidation:
         }
         
         # Get API response
-        response = api_client.post("/simulate", json=params)
+        response = api_client.post("/simulate/full", json=params)
         assert response.status_code == 200
         api_data = response.json()
         
@@ -132,7 +132,7 @@ class TestAPIValidation:
         }
         
         # Get API response
-        response = api_client.post("/simulate", json=params)
+        response = api_client.post("/simulate/full", json=params)
         assert response.status_code == 200
         api_data = response.json()
         
@@ -167,7 +167,7 @@ class TestAPIValidation:
         }
         
         # Get API response
-        response = api_client.post("/simulate", json=params)
+        response = api_client.post("/simulate/full", json=params)
         assert response.status_code == 200
         api_data = response.json()
         
@@ -205,7 +205,7 @@ class TestAPIValidation:
         This provides additional test coverage beyond the original shell scripts.
         """
         # Get API response
-        response = api_client.post("/simulate", json=test_case)
+        response = api_client.post("/simulate/full", json=test_case)
         assert response.status_code == 200
         api_data = response.json()
         

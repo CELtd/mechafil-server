@@ -35,7 +35,7 @@ The core principle is simple: **every API endpoint must return exactly the same 
 **Used by**: `test_historical_data_endpoint_matches_offline` - compares API historical data with offline results
 
 #### `test-simulation.py`  
-**Purpose**: Runs simulations exactly like the `/simulate` API endpoint
+**Purpose**: Runs simulations exactly like the `/simulate/full` API endpoint
 
 **What it does**:
 - Accepts same command-line parameters as API (`--lock-target`, `--forecast-length-days`, etc.)
@@ -63,7 +63,7 @@ These tests compare API endpoints with offline scripts to ensure mathematical ac
 - `test_historical_data_endpoint_matches_offline`: Compares `/historical-data/full` API response with `test-data-fetching.py` output
 
 **Simulation Tests**:
-- `test_default_simulation_endpoint`: Tests `/simulate` with default parameters vs `test-simulation.py`
+- `test_default_simulation_endpoint`: Tests `/simulate/full` with default parameters vs `test-simulation.py`
 - `test_lock_target_simulation`: Tests custom lock_target parameter (e.g., 0.1 instead of 0.3)
 - `test_forecast_length_simulation`: Tests custom forecast length (e.g., 365 days vs default)
 - `test_sector_duration_simulation`: Tests custom sector duration (e.g., 365 days vs default 540)
@@ -82,8 +82,8 @@ These tests verify API behavior without mathematical comparison:
 - `test_historical_data_full_endpoint`: Verifies `/historical-data/full` response structure
 
 **Simulation Endpoints**:
-- `test_simulate_endpoint_minimal_request`: Tests `/simulate` with empty JSON `{}`
-- `test_simulate_endpoint_with_parameters`: Tests `/simulate` with custom parameters
+- `test_simulate_endpoint_minimal_request`: Tests `/simulate/full` with empty JSON `{}`
+- `test_simulate_endpoint_with_parameters`: Tests `/simulate/full` with custom parameters
 - `test_simulate_endpoint_parameter_validation`: Tests parameter type validation and error handling
 
 ## Example Test Flow
@@ -94,7 +94,7 @@ def test_lock_target_simulation(self, api_client, offline_simulation_scripts, tm
     params = {"lock_target": 0.1, "forecast_length_days": 365}
     
     # 2. Call API endpoint
-    response = api_client.post("/simulate", json=params)
+    response = api_client.post("/simulate/full", json=params)
     assert response.status_code == 200
     api_data = response.json()
     
@@ -147,7 +147,7 @@ def test_new_parameter(self, api_client, offline_simulation_scripts, tmp_path):
     params = {"new_param": 42}
     
     # API call
-    response = api_client.post("/simulate", json=params)
+    response = api_client.post("/simulate/full", json=params)
     api_data = response.json()
     
     # Offline simulation

@@ -44,6 +44,9 @@ class Settings:
     # Testing: set to True to refresh every 2 minutes instead of daily
     RELOAD_TEST_MODE: bool = os.getenv("RELOAD_TEST_MODE", "false").lower() == "true"
     
+    # Historical data averaging settings
+    USE_WEEKLY_AVERAGING: bool = os.getenv("USE_WEEKLY_AVERAGING", "true").lower() == "true"
+    
     @property
     def has_spacescope_auth(self) -> bool:
         """Check if spacescope authentication is configured."""

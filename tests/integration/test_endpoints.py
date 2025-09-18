@@ -69,7 +69,7 @@ class TestBasicEndpoints:
     
     def test_simulate_endpoint_minimal_request(self, api_client: httpx.Client):
         """Test the simulate endpoint with minimal request."""
-        response = api_client.post("/simulate", json={})
+        response = api_client.post("/simulate/full", json={})
         assert response.status_code == 200
         
         data = response.json()
@@ -107,7 +107,7 @@ class TestBasicEndpoints:
             "fpr": 0.9
         }
         
-        response = api_client.post("/simulate", json=params)
+        response = api_client.post("/simulate/full", json=params)
         assert response.status_code == 200
         
         data = response.json()
@@ -127,6 +127,6 @@ class TestBasicEndpoints:
         ]
         
         for params in test_cases:
-            response = api_client.post("/simulate", json=params)
+            response = api_client.post("/simulate/full", json=params)
             # API should either succeed or fail gracefully
             assert response.status_code in [200, 422, 500], f"Unexpected status for {params}"
