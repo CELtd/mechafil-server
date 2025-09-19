@@ -134,7 +134,7 @@ async def root():
             "health": "/health (GET) - Server health check and JAX backend info",
             "historical_data": "/historical-data (GET) - Historical data with configurable averaging",
             "historical_data_full": "/historical-data/full (GET) - Full historical data with arrays",
-            "simulate": "/simulate (POST) - Run Filecoin forecast simulation with weekly averaged results",
+            "simulate": "/simulate (POST) - Run Filecoin forecast simulation with weekly averaged results (supports 'output' field filtering)",
             "simulate_full": "/simulate/full (POST) - Run Filecoin forecast simulation with full detailed results",
         },
         "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}' (averaged) or /simulate/full (detailed)",
@@ -314,10 +314,21 @@ async def simulate(req: SimulationRequest):
     """
     Run a Filecoin forecast simulation with weekly averaged results.
 
-    Example curl:
+    Example curl commands:
+      # Get all simulation results
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
-        -d '{"forecast_length_days": 3650, "lock_target": 0.3}'
+        -d '{"forecast_length_days": 365, "lock_target": 0.3}'
+      
+      # Get only specific output field
+      curl -X POST http://localhost:8000/simulate \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 365, "output": "available_supply"}'
+      
+      # Get multiple specific output fields
+      curl -X POST http://localhost:8000/simulate \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 365, "output": ["available_supply", "network_RBP_EIB"]}'
     """
     global loaded_data
 
@@ -402,6 +413,27 @@ async def simulate(req: SimulationRequest):
             else:
                 averaged_results[k] = v
 
+        # Filter results based on output parameter
+        if req.output is not None:
+            # Convert single string to list for uniform processing
+            requested_fields = [req.output] if isinstance(req.output, str) else req.output
+            
+            # Filter simulation_output to only include requested fields
+            filtered_results = {
+                field: averaged_results.get(field)
+                for field in requested_fields
+                if field in averaged_results
+            }
+            
+            # Check if any requested fields were not found
+            missing_fields = [field for field in requested_fields if field not in averaged_results]
+            if missing_fields:
+                logger.warning(f"Requested fields not found in simulation results: {missing_fields}")
+            
+            simulation_output = filtered_results
+        else:
+            simulation_output = averaged_results
+
         return {
             "input": {
                 "forecast_length_days": forecast_len
@@ -412,7 +444,7 @@ async def simulate(req: SimulationRequest):
                 "filplus_rate": round(float(smoothed_fpr), 2),
             },
             "averaging_method": "weekly (7-day windows)",
-            "simulation_output": averaged_results,
+            "simulation_output": simulation_output,
         }
 
     except Exception as e:
