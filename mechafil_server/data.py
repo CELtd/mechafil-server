@@ -78,55 +78,72 @@ class Data:
         """Load historical data from cache if fresh, otherwise fetch new."""
 
         logger.info("Loading historical data...")
-        
-        # Setup dates
-        current_date = date.today() - timedelta(days=settings.TIMEDELTA)
+    
+        # Setup initial dates
+        current_date = date.today() - timedelta(days=1)
         start_date = settings.STARTUP_DATE
-        end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
-        
-        # Load cache
+    
+        # Load cache object
         cache = Cache(settings.CACHE_DIR)
-        cache_key = f"offline_data_{start_date}{current_date}{end_date}"
-        cached_result = cache.get(cache_key)
 
-        if cached_result is not None:
+        attempt = 0
+        while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
+            end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
+            cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+            cached_result = cache.get(cache_key)
+
+            if cached_result is not None:
+                logger.info(f"Found cached historical data for current_date={current_date}.")
+                try:
+                    # Save into self fields
+                    self.historical_data = cached_result
+                    self.start_date = start_date
+                    self.current_date = current_date
+                    self.smoothed_hist_rbp = cached_result["smoothed_rbp"]
+                    self.smoothed_hist_rr = cached_result["smoothed_rr"]
+                    self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
+
+                    logger.info(f"Historical data loaded from cache successfully for current_date={current_date}!")
+                    return
+
+                except Exception as e:
+                    logger.warning(f"Failed to load existing historical data for {current_date}: {e}")
+                    logger.info("Will fetch fresh data...")
+
+            logger.info(f"Fetching historical data from {start_date} to {current_date}...")
+
             try:
+                data_dict = self.get_offline_data(start_date, current_date, end_date)
+
                 # Save into self fields
-                self.historical_data = cached_result
+                self.historical_data = data_dict
                 self.start_date = start_date
                 self.current_date = current_date
-                self.smoothed_hist_rbp = cached_result["smoothed_rbp"]
-                self.smoothed_hist_rr = cached_result["smoothed_rr"]
-                self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
-                logger.info("Historical data loaded from cache successfully!")
-                return
-                
+                self.smoothed_hist_rbp = data_dict["smoothed_rbp"]
+                self.smoothed_hist_rr = data_dict["smoothed_rr"]
+                self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
+
+                # Save everything to cache
+                cache.set(cache_key, data_dict)
+
+                logger.info("Historical data loaded and saved successfully!")
+                return  # success, exit function
+
             except Exception as e:
-                logger.warning(f"Failed to load existing historical data: {e}")
-                logger.info("Will fetch fresh data...")
+                logger.warning(f"Error fetching historical data. No data for current date {current_date}.")
+                attempt += 1
 
-        logger.info(f"Fetching historical data from {start_date} to {current_date}...")
-
-        try:
-            data_dict = self.get_offline_data(start_date, current_date, end_date)
-
-            # Save into self fields
-            self.historical_data = data_dict
-            self.start_date = start_date
-            self.current_date = current_date
-            self.smoothed_hist_rbp = data_dict["smoothed_rbp"]
-            self.smoothed_hist_rr = data_dict["smoothed_rr"]
-            self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
-
-            # Save everything to cache
-            cache.set(cache_key, data_dict) 
-
-            logger.info("Historical data loaded and saved successfully!")
-
-        except Exception as e:
-            logger.error(f"Failed to load historical data: {e}")
-            logger.exception("Full traceback:")
-            raise
+                if attempt >= settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
+                    logger.error(
+                        f"Failed to load historical data after "
+                        f"{settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES} attempts: {e}"
+                    )
+                    logger.exception("Full traceback:")
+                    raise
+                else:
+                    current_date -= timedelta(days=1)
+                    logger.info(f"Retrying... with new current_date={current_date}")
+ 
             
     def refresh_historical_data(self) -> None:
         """Refresh historical data by clearing cache and reloading.
@@ -136,42 +153,58 @@ class Data:
         """
         logger.info("Refreshing historical data (forced cache bypass)...")
         
-        try:
-            # Setup dates
-            current_date = date.today() - timedelta(days=settings.TIMEDELTA)
-            start_date = settings.STARTUP_DATE
+        current_date = date.today() - timedelta(days=1)
+        start_date = settings.STARTUP_DATE
+        cache = Cache(settings.CACHE_DIR)
+    
+        attempt = 0
+        while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
-            
-            # Clear relevant cache entries
-            cache = Cache(settings.CACHE_DIR)
             cache_key = f"offline_data_{start_date}{current_date}{end_date}"
-            
-            # Remove old cache entry if it exists
+    
+            # Clear relevant cache entry before fetching
             if cache_key in cache:
-                del cache[cache_key]
-                logger.info("Cleared old cache entry")
-            
-            # Fetch fresh data
+                try:
+                    del cache[cache_key]
+                    logger.info(f"Cleared old cache entry for current_date={current_date}")
+                except Exception as e:
+                    logger.warning(f"Failed to clear cache entry {cache_key}: {e}")
+    
             logger.info(f"Fetching fresh historical data from {start_date} to {current_date}...")
-            data_dict = self.get_offline_data(start_date, current_date, end_date)
-            
-            # Update instance fields
-            self.historical_data = data_dict
-            self.start_date = start_date
-            self.current_date = current_date
-            self.smoothed_hist_rbp = data_dict["smoothed_rbp"]
-            self.smoothed_hist_rr = data_dict["smoothed_rr"]
-            self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
-            
-            # Save new data to cache
-            cache.set(cache_key, data_dict)
-            
-            logger.info("Historical data refreshed and cached successfully!")
-            
-        except Exception as e:
-            logger.error(f"Failed to refresh historical data: {e}")
-            logger.exception("Full traceback:")
-            # Don't raise here - we want the server to continue running even if refresh fails
+    
+            try:
+                data_dict = self.get_offline_data(start_date, current_date, end_date)
+    
+                # Update instance fields
+                self.historical_data = data_dict
+                self.start_date = start_date
+                self.current_date = current_date
+                self.smoothed_hist_rbp = data_dict["smoothed_rbp"]
+                self.smoothed_hist_rr = data_dict["smoothed_rr"]
+                self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
+    
+                # Save new data to cache
+                cache.set(cache_key, data_dict)
+    
+                logger.info("Historical data refreshed and cached successfully!")
+                return  # success, exit loop
+    
+            except Exception as e:
+                logger.warning(f"Error refreshing data. No data for current_date={current_date}.")
+                attempt += 1
+    
+                if attempt >= settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
+                    logger.error(
+                        f"Failed to refresh historical data after "
+                        f"{settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES} attempts: {e}"
+                    )
+                    logger.exception("Full traceback:")
+                    # Do NOT raise here — allow server to keep running
+                    return
+                else:
+                    current_date -= timedelta(days=1)
+                    logger.info(f"Retrying refresh... new current_date={current_date}")
+
             
     # ------------------------------------------------------------------
     # Public getters

@@ -33,7 +33,7 @@ class Settings:
 
     # Data constants and defaults
     STARTUP_DATE: date = date(2025, 1, 1)
-    TIMEDELTA : int = 2 # Days
+    MAX_HISTORICAL_DATA_FETCHING_RETRIES = 10
     WINDOW_DAYS: int = 10 * 365
     SECTOR_DURATION_DAYS: int = 540
     LOCK_TARGET: float = 0.3
