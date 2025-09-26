@@ -393,15 +393,12 @@ async def simulate(req: SimulationRequest):
             simulation_output = downsampled_results
 
         return {
-            "input": {
-                "forecast_length_days": forecast_len
+            "input variables": {
+                "forecast_length_days": forecast_len,
+                "raw_byte_power": round(float(rbp_value), 2),
+                "renewal_rate": round(float(rr_value), 2),
+                "filplus_rate": round(float(fpr_value), 2),
             },
-            "smoothed_metrics": {
-                "raw_byte_power": round(float(smoothed_rbp), 2),
-                "renewal_rate": round(float(smoothed_rr), 2),
-                "filplus_rate": round(float(smoothed_fpr), 2),
-            },
-            "averaging_method": "weekly (7-day windows)",
             "simulation_output": simulation_output,
         }
 
