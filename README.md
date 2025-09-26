@@ -154,21 +154,21 @@ All parameters are optional. Defaults are calculated from historical data or con
 
 **Minimal request (all defaults):**
 ```bash
-curl -X POST http://localhost:8000/simulate/full \
+curl -X POST http://localhost:8000/simulate \
   -H 'Content-Type: application/json' \
   -d '{}'
 ```
 
 **1-year forecast:**
 ```bash
-curl -X POST http://localhost:8000/simulate/full \
+curl -X POST http://localhost:8000/simulate \
   -H 'Content-Type: application/json' \
   -d '{"forecast_length_days": 365}'
 ```
 
 **Complete parameter set:**
 ```bash
-curl -X POST http://localhost:8000/simulate/full \
+curl -X POST http://localhost:8000/simulate \
   -H 'Content-Type: application/json' \
   -d '{
     "rbp": 3.38,

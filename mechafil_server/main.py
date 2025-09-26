@@ -4,15 +4,18 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from datetime import date, timedelta
 
 import jax
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-from mechafil_jax import sim as mechafil_sim
 import jax.numpy as jnp
 from jax import config
 config.update("jax_enable_x64", True) 
+
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+from mechafil_jax import sim as mechafil_sim
 
 from .models import (
     HealthResponse,
@@ -132,9 +135,9 @@ async def root():
         "redoc": "/redoc",
         "endpoints": {
             "health": "/health (GET) - Server health check and JAX backend info",
-            "historical_data": "/historical-data (GET) - Historical data with configurable averaging",
+            "historical_data": "/historical-data (GET) - Historical data downsampled every week",
             "historical_data_full": "/historical-data/full (GET) - Full historical data with arrays",
-            "simulate": "/simulate (POST) - Run Filecoin forecast simulation with weekly averaged results (supports 'output' field filtering)",
+            "simulate": "/simulate (POST) - Run Filecoin forecast simulation downsampled every week. ",
             "simulate_full": "/simulate/full (POST) - Run Filecoin forecast simulation with full detailed results",
         },
         "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}' (averaged) or /simulate/full (detailed)",
@@ -142,9 +145,10 @@ async def root():
     }
 
 
+### TODO: need to add the field selector so that the llm can understand what to fetch
 @app.get("/historical-data", tags=["Data"])
 async def get_historical_data():
-    """Get historical data with configurable averaging (weekly or 10-day windows)."""
+    """Get historical data reduced to Monday values (no averaging)."""
     global loaded_data
 
     if loaded_data is None:
@@ -167,81 +171,41 @@ async def get_historical_data():
         smoothed_rr = hist_data["smoothed_rr"]
         smoothed_fpr = hist_data["smoothed_fpr"]
 
-        # Calculate averaged data
-        def calculate_averaged_data(data_array):
-            """Calculate weekly or rolling average for an array based on config."""
-            import numpy as np
-            from datetime import datetime, timedelta
-            
-            data = np.array(data_array)
-            
-            if not settings.USE_WEEKLY_AVERAGING:
-                # Fallback to 10-day rolling average
-                window_size = 10
-                if len(data) < window_size:
-                    return [round(float(np.mean(data)), 2)]
-                
-                averaged = []
-                for i in range(0, len(data), window_size):
-                    window = data[i:i + window_size]
-                    averaged.append(round(float(np.mean(window)), 2))
-                return averaged
-            
-            # Weekly averaging (Monday to Sunday)
-            if len(data) < 7:
-                return [round(float(np.mean(data)), 2)]
-            
-            # Assume data starts from the start_date and goes sequentially
-            start_date = hist_data.get("start_date")
-            if not start_date:
-                # Fallback to simple 7-day windows if no start date
-                averaged = []
-                for i in range(0, len(data), 7):
-                    window = data[i:i + 7]
-                    averaged.append(round(float(np.mean(window)), 2))
-                return averaged
-            
-            # Find the first Monday
-            current_date = start_date
-            days_until_monday = (7 - current_date.weekday()) % 7
-            if days_until_monday == 0 and current_date.weekday() != 0:
-                days_until_monday = 7
-            
-            first_monday_index = days_until_monday
-            
-            averaged = []
-            
-            # Handle partial week before first Monday
-            if first_monday_index > 0:
-                partial_week = data[:first_monday_index]
-                if len(partial_week) > 0:
-                    averaged.append(round(float(np.mean(partial_week)), 2))
-            
-            # Process complete weeks (Monday to Sunday)
-            for i in range(first_monday_index, len(data), 7):
-                week_data = data[i:i + 7]
-                if len(week_data) > 0:
-                    averaged.append(round(float(np.mean(week_data)), 2))
-            
-            return averaged
+        from datetime import timedelta
 
-        averaging_method = "weekly (Monday-Sunday)" if settings.USE_WEEKLY_AVERAGING else "10-day windows"
-        
+        def select_mondays(data_array, start_date):
+            """Pick only values that correspond to Mondays."""
+            if not start_date:
+                # If we don't know the start date, return everything
+                return [round(float(x), 2) for x in data_array]
+
+            results = []
+            for i, val in enumerate(data_array):
+                current_date = start_date + timedelta(days=i)
+                if current_date.weekday() == 0:  # Monday
+                    results.append(round(float(val), 2))
+            return results
+
+        start_date = hist_data.get("start_date")
+
         return {
-            "message": f"Historical data averaged over {averaging_method}",
-            "averaging_method": averaging_method,
+            "message": "Historical data reduced to Mondays only (no averaging)",
             "smoothed_metrics": {
                 "raw_byte_power": round(float(smoothed_rbp), 2),
                 "renewal_rate": round(float(smoothed_rr), 2),
                 "filplus_rate": round(float(smoothed_fpr), 2),
             },
-            "averaged_arrays": {
-                "raw_byte_power": calculate_averaged_data(hist_rbp),
-                "renewal_rate": calculate_averaged_data(hist_rr),
-                "filplus_rate": calculate_averaged_data(hist_fpr),
+            "monday_arrays": {
+                "raw_byte_power": select_mondays(hist_rbp, start_date),
+                "renewal_rate": select_mondays(hist_rr, start_date),
+                "filplus_rate": select_mondays(hist_fpr, start_date),
             },
-            "offline_data_averaged": {
-                k: (calculate_averaged_data(v) if hasattr(v, "__iter__") and not isinstance(v, str) and len(v) > 1 else [round(float(v), 2)] if isinstance(v, (int, float)) else v) 
+            "offline_data_mondays": {
+                k: (
+                    select_mondays(v, start_date)
+                    if hasattr(v, "__iter__") and not isinstance(v, str) and len(v) > 1
+                    else [round(float(v), 2)] if isinstance(v, (int, float)) else v
+                )
                 for k, v in offline_data.items()
             },
         }
@@ -251,6 +215,7 @@ async def get_historical_data():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving historical data: {str(e)}",
         )
+
 
 
 @app.get("/historical-data/full", tags=["Data"])
@@ -386,32 +351,25 @@ async def simulate(req: SimulationRequest):
             use_available_supply=False
         )
 
-        # Apply weekly averaging to simulation results
-        def calculate_weekly_average_results(data_array):
-            """Calculate weekly average for simulation result arrays."""
-            import numpy as np
-            
-            data = np.array(data_array)
-            if len(data) < 7:
-                return [round(float(np.mean(data)), 2)]
-            
-            averaged = []
-            for i in range(0, len(data), 7):
-                week_data = data[i:i + 7]
-                if len(week_data) > 0:
-                    averaged.append(round(float(np.mean(week_data)), 2))
-            
-            return averaged
-
-        # Apply weekly averaging to all result arrays
-        averaged_results = {}
+        def select_monday_results(data_array, start_date: date):
+            """Select results that fall on Mondays, given the start_date of the series."""
+            mondays = []
+            for i, val in enumerate(data_array):
+                current_date = start_date + timedelta(days=i)
+                if current_date.weekday() == 0:  # Monday
+                    mondays.append(round(float(val), 2))
+            return mondays
+        
+        # Example usage:
+        # start_date is the date of the first element in the results array
+        downsampled_results = {}
         for k, v in results.items():
             if hasattr(v, "__iter__") and not isinstance(v, str) and len(v) > 1:
-                averaged_results[k] = calculate_weekly_average_results(v)
+                downsampled_results[k] = select_monday_results(v, start_date=start_date)
             elif isinstance(v, (int, float)):
-                averaged_results[k] = round(float(v), 2)
+                downsampled_results[k] = round(float(v), 2)
             else:
-                averaged_results[k] = v
+                downsampled_results[k] = v
 
         # Filter results based on output parameter
         if req.output is not None:
@@ -420,19 +378,19 @@ async def simulate(req: SimulationRequest):
             
             # Filter simulation_output to only include requested fields
             filtered_results = {
-                field: averaged_results.get(field)
+                field: downsampled_results.get(field)
                 for field in requested_fields
-                if field in averaged_results
+                if field in downsampled_results
             }
             
             # Check if any requested fields were not found
-            missing_fields = [field for field in requested_fields if field not in averaged_results]
+            missing_fields = [field for field in requested_fields if field not in downsampled_results]
             if missing_fields:
                 logger.warning(f"Requested fields not found in simulation results: {missing_fields}")
             
             simulation_output = filtered_results
         else:
-            simulation_output = averaged_results
+            simulation_output = downsampled_results
 
         return {
             "input": {
