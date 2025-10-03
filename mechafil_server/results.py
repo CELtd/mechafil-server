@@ -5,6 +5,50 @@ from typing import Any, Dict, List, Union
 
 @dataclass
 class SimulationResults:
+    """
+    Container for the results of a Filecoin economic simulation.
+
+    The object has two main fields:
+
+    - `input_data`: dictionary containing metadata about the simulation run:
+        * "current date": current chain date when simulation starts (string, YYYY-MM-DD)
+        * "forecast_length_days": length of forecast horizon (int)
+        * "raw_byte_power": RBP value used for the simulation (float)
+        * "renewal_rate": RR used for the simulation (float)
+        * "filplus_rate": FIL+ rate used for the simulation (float)
+
+    - `simulation_output`: dictionary mapping metric names to time series
+      arrays or scalars. The keys include, among others:
+        * "available_supply"
+        * "capped_power_EIB"
+        * "circ_supply"
+        * "cum_baseline_reward"
+        * "cum_capped_power_EIB"
+        * "cum_network_reward"
+        * "cum_simple_reward"
+        * "day_locked_pledge"
+        * "day_network_reward"
+        * "day_onboarded_power_QAP_PIB"
+        * "day_pledge_per_QAP"
+        * "day_renewed_pledge"
+        * "day_renewed_power_QAP_PIB"
+        * "day_rewards_per_sector"
+        * "days"
+        * "network_QAP_EIB"
+        * "network_RBP_EIB"
+        * "network_baseline_EIB"
+        * "network_locked"
+        * "qa_total_power_eib"
+        * "rb_total_power_eib"
+        * "six_year_vest_saft"
+        * "three_year_vest_saft"
+        * "two_year_vest_saft"
+
+      By convention:
+        - Most values are lists of floats, trimmed to `forecast_length_days`.
+        - "1y_return_per_sector" and "1y_sector_roi" are special: they are 90 days shorter.
+        - Scalars (e.g., initial pledge, some vesting totals) are returned as floats.
+    """ 
     input_data: Dict[str, Any]
     simulation_output: Dict[str, Union[List[float], float, str]]
 
@@ -99,6 +143,43 @@ class SimulationResults:
 
 @dataclass
 class FetchDataResults:
+    """
+    Container for complete historical Filecoin data returned by the /historical-data endpoint.
+
+    The output is provided in a single dictionary under the field `data`.  
+    It includes three categories of fields:
+
+    1. **30-day averaged metrics (scalars)**:
+       - `raw_byte_power_averaged_over_previous_30days` (float)
+       - `renewal_rate_averaged_over_previous_30days` (float)
+       - `filplus_rate_averaged_over_previous_30days` (float)
+
+    2. **Daily historical arrays** (lists of floats, one entry per day):
+       - `raw_byte_power`
+       - `renewal_rate`
+       - `filplus_rate`
+
+    3. **Offline model data (scalars and arrays)**:
+       - Scalars:
+         * `rb_power_zero`, `qa_power_zero`
+         * `start_vested_amt`, `zero_cum_capped_power_eib`
+         * `init_baseline_eib`, `circ_supply_zero`
+         * `locked_fil_zero`, `daily_burnt_fil`
+       - Arrays:
+         * `historical_raw_power_eib`, `historical_qa_power_eib`
+         * `historical_onboarded_rb_power_pib`, `historical_onboarded_qa_power_pib`
+         * `historical_renewed_rb_power_pib`, `historical_renewed_qa_power_pib`
+         * `rb_known_scheduled_expire_vec`, `qa_known_scheduled_expire_vec`
+         * `known_scheduled_pledge_release_full_vec`
+         * `burnt_fil_vec`
+         * `historical_renewal_rate`
+
+    All scalars are stored as floats, arrays as lists of floats (rounded to 6 decimals).  
+
+    Utility methods:
+      - `.filter_fields(fields)`: return a new FetchDataResults with only a subset of keys.
+      - `.to_dict()`: produce a JSON-serializable representation with the `data` field.
+    """
     data: Dict[str, Union[List[float], float, str]]
 
     @classmethod
