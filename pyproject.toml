@@ -28,6 +28,9 @@ pandas = "^2.0.0"
 # Git dependencies
 pystarboard = {git = "https://github.com/CELtd/pystarboard.git"}
 mechafil-jax = {git = "https://github.com/CELtd/mechafil-jax.git"}
+# Documentation dependencies (moved from dev group to ensure docs are always built)
+sphinx = "^7.2.0"
+sphinx-rtd-theme = "^2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
@@ -46,12 +49,12 @@ httpx = "^0.24.0"
 requests = "^2.31.0"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = "^7.2.0"
-sphinx-rtd-theme = "^2.0.0"
+# Only keep autobuild in dev group (not needed for production)
 sphinx-autobuild = "^2024.0.0"
 
 [tool.poetry.scripts]
 mechafil-server = "mechafil_server.main:main"
+build-docs = "mechafil_server.build_docs:main"
 
 [build-system]
 requires = ["poetry-core"]
