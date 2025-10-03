@@ -13,6 +13,8 @@ config.update("jax_enable_x64", True)
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
 from mechafil_jax import sim as mechafil_sim
@@ -111,6 +113,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files for Read the Docs documentation
+docs_path = Path(__file__).parent.parent / "docs" / "build" / "html"
+if docs_path.exists():
+    app.mount("/documentation", StaticFiles(directory=str(docs_path), html=True), name="documentation")
+    logger.info(f"Mounted Read the Docs documentation at /documentation")
+else:
+    logger.warning(f"Documentation path not found: {docs_path}. Build docs with: cd docs && poetry run make html")
+
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
@@ -126,22 +136,14 @@ async def health_check():
         )
 
 
-@app.get("/", tags=["Root"])
+@app.get("/", tags=["Root"], include_in_schema=False)
 async def root():
-    """Root endpoint with basic information."""
-    return {
-        "message": "Mechafil Server",
-        "version": "0.1.0",
-        "docs": "/docs",
-        "redoc": "/redoc",
-        "endpoints": {
-            "health": "/health (GET) - Server health check and JAX backend info",
-            "historical_data": "/historical-data (GET) - Historical data downsampled every week",
-            "simulate": "/simulate (POST) - Run Filecoin forecast simulation downsampled every week. ",
-        },
-        "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}' ",
-        "template_info": "Empty request '{}' uses defaults from historical data",
-    }
+    """Redirect root to Read the Docs documentation."""
+    # Check if docs are built, otherwise redirect to Swagger UI
+    if docs_path.exists():
+        return RedirectResponse(url="/documentation/index.html")
+    else:
+        return RedirectResponse(url="/docs")
 
 @app.get("/historical-data", tags=["Data"])
 async def get_historical_data_full():

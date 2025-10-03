@@ -116,19 +116,26 @@ poetry run mechafil-server
 poetry run uvicorn mechafil_server.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Docs:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+The server will start on `http://localhost:8000`.
+
+**Note**: Build the documentation first (see [Documentation](#documentation) section below) to enable the Read the Docs interface at the root URL.
+
+**API Documentation Access:**
+- **Homepage**: http://localhost:8000 (redirects to Read the Docs if built, otherwise Swagger UI)
+- **Read the Docs**: http://localhost:8000/documentation/ (after building docs)
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
 
 ## API
 
 Core Endpoints
-- `GET /` — Root endpoint with server information and available endpoints.
-- `GET /health` — Health check endpoint with server status and JAX backend info.
+- `GET /` — Redirects to Read the Docs documentation (or Swagger UI if docs not built)
+- `GET /health` — Health check endpoint with server status and JAX backend info
+- `GET /documentation/` — Read the Docs HTML documentation (if built)
 
 Historical Data
-- `GET /historical-data` — Summary of loaded historical data.
+- `GET /historical-data` — Historical network data downsampled to Mondays
 
 Simulation
 - `POST /simulate` — Run a forecast with weekly averaged results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`, `output`).
@@ -252,15 +259,13 @@ For comprehensive testing methodology, architecture, test types, and detailed ex
 
 Complete API documentation is available in multiple formats:
 
-### Online Documentation
+### Read the Docs (Comprehensive)
 
-- **Interactive API Docs**:
-  - Swagger UI: http://localhost:8000/docs
-  - ReDoc: http://localhost:8000/redoc
+After building the documentation, it's accessible at:
+- **http://localhost:8000** (root redirects here automatically)
+- **http://localhost:8000/documentation/**
 
-### Read the Docs
-
-Comprehensive documentation including:
+The documentation includes:
 - Complete API endpoint reference
 - Request/response models
 - Configuration guide
@@ -278,17 +283,27 @@ poetry install --with docs
 cd docs
 poetry run make html
 
-# View the documentation
-python -m http.server 8080 -d build/html
-# Then open http://localhost:8080
+# Start the server - docs will be available at http://localhost:8000
+cd ..
+poetry run mechafil-server
 ```
 
-**Auto-rebuild on changes:**
+Once built, the documentation is automatically served at:
+- **http://localhost:8000** (root redirects here)
+- **http://localhost:8000/documentation/**
+
+**Auto-rebuild docs while editing:**
 
 ```bash
+# This will auto-rebuild on changes and serve at http://127.0.0.1:8000
 poetry run sphinx-autobuild docs/source docs/build/html
-# Opens at http://127.0.0.1:8000
 ```
+
+### Interactive API Docs (Alternative)
+
+If you prefer the interactive Swagger UI or ReDoc:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
 The documentation source is in `docs/` and is ready for deployment to Read the Docs.
 
