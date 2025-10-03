@@ -27,6 +27,6 @@ build:
       # Install poetry
       - pip install poetry
     post_install:
-      # Install dependencies with poetry
+      # Install dependencies with poetry (main includes sphinx now)
       - poetry config virtualenvs.create false
-      - poetry install --only-root --only main
+      - poetry install --only main
