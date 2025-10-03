@@ -51,3 +51,5 @@ test/
 clean_data.sh
 selected_results.json
 api_results.json
+data
+local-tests

@@ -32,8 +32,8 @@ class Settings:
     CACHE_DIR: Path = Path(__file__).parent.parent / '.cache'
 
     # Data constants and defaults
-    STARTUP_DATE: date = date(2022, 10, 10)
-    TIMEDELTA : int = 2 # Days
+    STARTUP_DATE: date = date(2025, 1, 1)
+    MAX_HISTORICAL_DATA_FETCHING_RETRIES = 10
     WINDOW_DAYS: int = 10 * 365
     SECTOR_DURATION_DAYS: int = 540
     LOCK_TARGET: float = 0.3
@@ -43,6 +43,9 @@ class Settings:
     
     # Testing: set to True to refresh every 2 minutes instead of daily
     RELOAD_TEST_MODE: bool = os.getenv("RELOAD_TEST_MODE", "false").lower() == "true"
+    
+    # Historical data averaging settings
+    USE_WEEKLY_AVERAGING: bool = os.getenv("USE_WEEKLY_AVERAGING", "true").lower() == "true"
     
     @property
     def has_spacescope_auth(self) -> bool:

@@ -4,15 +4,18 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from datetime import date, timedelta
 
 import jax
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-from mechafil_jax import sim as mechafil_sim
 import jax.numpy as jnp
 from jax import config
 config.update("jax_enable_x64", True) 
+
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+from mechafil_jax import sim as mechafil_sim
 
 from .models import (
     HealthResponse,
@@ -23,6 +26,7 @@ from .models import (
 from .data import Data
 from .config import settings
 from .scheduler import DataRefreshScheduler
+from .results import SimulationResults, FetchDataResults
 
 # Load environment variables from common locations
 load_dotenv()
@@ -132,18 +136,16 @@ async def root():
         "redoc": "/redoc",
         "endpoints": {
             "health": "/health (GET) - Server health check and JAX backend info",
-            "historical_data": "/historical-data (GET) - Historical data summary",
-            "historical_data_full": "/historical-data/full (GET) - Full historical data with arrays",
-            "simulate": "/simulate (POST) - Run Filecoin forecast simulation",
+            "historical_data": "/historical-data (GET) - Historical data downsampled every week",
+            "simulate": "/simulate (POST) - Run Filecoin forecast simulation downsampled every week. ",
         },
-        "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}'",
+        "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}' ",
         "template_info": "Empty request '{}' uses defaults from historical data",
     }
 
-
 @app.get("/historical-data", tags=["Data"])
-async def get_historical_data():
-    """Get pretty printed historical data if available."""
+async def get_historical_data_full():
+    """Get historical data downsampled to Mondays for visualization."""
     global loaded_data
 
     if loaded_data is None:
@@ -153,11 +155,44 @@ async def get_historical_data():
         )
 
     try:
-        summary = loaded_data.get_historical_data_summary()
-        return {
-            "message": "Historical data loaded and available",
-            "data_summary": summary,
-        }
+        logger.info("Getting historical data (downsampled to Mondays)...")
+
+        hist_data = loaded_data.get_historical_data()
+        if not hist_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No historical data available",
+            )
+
+        offline_data = hist_data["offline_data"]
+        hist_rbp = hist_data["hist_rbp"]
+        hist_rr = hist_data["hist_rr"]
+        hist_fpr = hist_data["hist_fpr"]
+
+        smoothed_rbp = hist_data["smoothed_rbp"]
+        smoothed_rr = hist_data["smoothed_rr"]
+        smoothed_fpr = hist_data["smoothed_fpr"]
+
+        start_date = hist_data["start_date"]
+
+        # Wrap into FetchDataResults
+        results = FetchDataResults.from_raw(
+            hist_arrays={
+                "raw_byte_power": hist_rbp,
+                "renewal_rate": hist_rr,
+                "filplus_rate": hist_fpr,
+            },
+            offline_data=offline_data,
+            smoothed_rbp=smoothed_rbp,
+            smoothed_rr=smoothed_rr,
+            smoothed_fpr=smoothed_fpr,
+        )
+
+        # Downsample to Mondays
+        results = results.downsample_mondays(start_date)
+
+        return results.to_dict()
+
     except Exception as e:
         logger.error(f"Error retrieving historical data: {e}")
         raise HTTPException(
@@ -165,72 +200,26 @@ async def get_historical_data():
             detail=f"Error retrieving historical data: {str(e)}",
         )
 
-
-@app.get("/historical-data/full", tags=["Data"])
-async def get_historical_data_full():
-    """Get complete historical data with all values."""
-    global loaded_data
-
-    if loaded_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Data handler not initialized",
-        )
-
-    try:
-        logger.info("Getting full historical data...")
-        historical_data = loaded_data.get_historical_data()
-        if historical_data is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No historical data available",
-            )
-
-        hist_data = loaded_data.get_historical_data()
-        if not hist_data:
-            raise RuntimeError("No historical data loaded")
-        
-        offline_data = hist_data["offline_data"]
-        hist_rbp = hist_data["hist_rbp"]
-        hist_rr = hist_data["hist_rr"]
-        hist_fpr = hist_data["hist_fpr"]
-        
-        smoothed_rbp = hist_data["smoothed_rbp"]
-        smoothed_rr = hist_data["smoothed_rr"]
-        smoothed_fpr = hist_data["smoothed_fpr"]
-
-
-        return {
-            "message": "Complete historical data",
-            "smoothed_metrics": {
-                "raw_byte_power": float(smoothed_rbp),
-                "renewal_rate": float(smoothed_rr),
-                "filplus_rate": float(smoothed_fpr),
-            },
-            "historical_arrays": {
-                "raw_byte_power": [float(x) for x in hist_rbp],
-                "renewal_rate": [float(x) for x in hist_rr],
-                "filplus_rate": [float(x) for x in hist_fpr],
-            },
-            "offline_data": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in offline_data.items()},
-        }
-    except Exception as e:
-        logger.error(f"Error retrieving full historical data: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving historical data: {str(e)}",
-        )
-
-
 @app.post("/simulate", tags=["Simulation"])
 async def simulate(req: SimulationRequest):
     """
-    Run a Filecoin forecast simulation.
+    Run a Filecoin forecast simulation with weekly averaged results.
 
-    Example curl:
+    Example curl commands:
+      # Get all simulation results
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
-        -d '{"forecast_length_days": 3650, "lock_target": 0.3}'
+        -d '{"forecast_length_days": 365, "lock_target": 0.3}'
+      
+      # Get only specific output field
+      curl -X POST http://localhost:8000/simulate \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 365, "output": "available_supply"}'
+      
+      # Get multiple specific output fields
+      curl -X POST http://localhost:8000/simulate \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 365, "output": ["available_supply", "network_RBP_EIB"]}'
     """
     global loaded_data
 
@@ -240,28 +229,28 @@ async def simulate(req: SimulationRequest):
             detail="Historical data not loaded yet; try again shortly"
         )
 
-    # Unpack request data with defaults from historical data
-    hist_data = loaded_data.get_historical_data()
-    if not hist_data:
-        raise RuntimeError("No historical data loaded")
-
-    # Use request values or fall back to historical data defaults
-    forecast_len = req.forecast_length_days if req.forecast_length_days is not None else settings.WINDOW_DAYS
-    sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else settings.SECTOR_DURATION_DAYS
-    
-    # Default values from smoothed historical data
-    smoothed_rbp = hist_data["smoothed_rbp"]
-    smoothed_rr = hist_data["smoothed_rr"] 
-    smoothed_fpr = hist_data["smoothed_fpr"]
-    
-    # Use request parameters or defaults
-    rbp_value = req.rbp if req.rbp is not None else smoothed_rbp
-    rr_value = req.rr if req.rr is not None else smoothed_rr
-    fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
-    lock_target = req.lock_target if req.lock_target is not None else settings.LOCK_TARGET
-
+    # Get full simulation results first
     try:
-        #offline_data = hist_data["offline_data"]
+        # Run the full simulation using the same logic as simulate_full
+        hist_data = loaded_data.get_historical_data()
+        if not hist_data:
+            raise RuntimeError("No historical data loaded")
+
+        # Use request values or fall back to historical data defaults
+        forecast_len = req.forecast_length_days if req.forecast_length_days is not None else settings.WINDOW_DAYS
+        sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else settings.SECTOR_DURATION_DAYS
+        
+        # Default values from smoothed historical data
+        smoothed_rbp = hist_data["smoothed_rbp"]
+        smoothed_rr = hist_data["smoothed_rr"] 
+        smoothed_fpr = hist_data["smoothed_fpr"]
+        
+        # Use request parameters or defaults
+        rbp_value = req.rbp if req.rbp is not None else smoothed_rbp
+        rr_value = req.rr if req.rr is not None else smoothed_rr
+        fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
+        lock_target = req.lock_target if req.lock_target is not None else settings.LOCK_TARGET
+
         start_date = hist_data["start_date"]
         current_date = hist_data["current_date"]
         simulation_offline_data = loaded_data.trim_data_for_simulation(forecast_len)
@@ -282,26 +271,24 @@ async def simulate(req: SimulationRequest):
         else:
             fpr = jnp.ones(forecast_len) * fpr_value
 
-        results = mechafil_sim.run_sim(
+        raw_results = mechafil_sim.run_sim(
             rbp, rr, fpr, lock_target, start_date, current_date,
             forecast_len, sector_duration_days, simulation_offline_data,
             use_available_supply=False
         )
+        results = SimulationResults.from_raw(
+            raw_results, start_date, current_date, forecast_len,
+            smoothed_rbp, smoothed_rr, smoothed_fpr
+        )
 
-        return {
-            "input": {
-                "forecast_length_days": forecast_len
-            },
-            "smoothed_metrics": {
-                "raw_byte_power": float(smoothed_rbp),
-                "renewal_rate": float(smoothed_rr),
-                "filplus_rate": float(smoothed_fpr),
-            },
-            "simulation_output": {
-                k: (v.tolist() if hasattr(v, "tolist") else v)
-                for k, v in results.items()
-            },
-        }
+        # Downsample to Mondays
+        results = results.downsample_mondays(start_date)
+        
+        # Filter output if requested
+        if req.output is not None:
+            results = results.filter_fields(req.output)
+        
+        return results.to_dict() 
 
     except Exception as e:
         logger.error(f"Simulation error: {e}")

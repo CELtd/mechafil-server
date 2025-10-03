@@ -132,7 +132,8 @@ Historical Data
 - `GET /historical-data/full` — Full historical arrays and smoothed values.
 
 Simulation
-- `POST /simulate` — Run a forecast (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
+- `POST /simulate` — Run a forecast with weekly averaged results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
+- `POST /simulate/full` — Run a forecast with full detailed results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
 
 
 ## Examples
@@ -183,7 +184,7 @@ curl -X POST http://localhost:8000/simulate \
 
 **Long-term forecast (10 years):**
 ```bash
-curl -X POST http://localhost:8000/simulate \
+curl -X POST http://localhost:8000/simulate/full \
   -H 'Content-Type: application/json' \
   -d '{
     "forecast_length_days": 3650,
@@ -193,7 +194,7 @@ curl -X POST http://localhost:8000/simulate \
 
 **Time-varying parameters using arrays:**
 ```bash
-curl -X POST http://localhost:8000/simulate \
+curl -X POST http://localhost:8000/simulate/full \
   -H 'Content-Type: application/json' \
   -d '{
     "rbp": [3.0, 3.5, 4.0],
@@ -229,6 +230,50 @@ Our tests ensure **API responses are identical to offline simulations** run with
 ### Detailed Testing Information
 
 For comprehensive testing methodology, architecture, test types, and detailed examples, see [`tests/README.md`](tests/README.md).
+
+## Documentation
+
+Complete API documentation is available in multiple formats:
+
+### Online Documentation
+
+- **Interactive API Docs**:
+  - Swagger UI: http://localhost:8000/docs
+  - ReDoc: http://localhost:8000/redoc
+
+### Read the Docs
+
+Comprehensive documentation including:
+- Complete API endpoint reference
+- Request/response models
+- Configuration guide
+- Deployment guides (Docker, Kubernetes, Cloud)
+- Code examples (Python, JavaScript, curl)
+- Advanced usage patterns
+
+**Build the documentation locally:**
+
+```bash
+# Install documentation dependencies
+poetry install --with docs
+
+# Build HTML documentation
+cd docs
+poetry run make html
+
+# View the documentation
+python -m http.server 8080 -d build/html
+# Then open http://localhost:8080
+```
+
+**Auto-rebuild on changes:**
+
+```bash
+poetry run sphinx-autobuild docs/source docs/build/html
+# Opens at http://127.0.0.1:8000
+```
+
+The documentation source is in `docs/` and is ready for deployment to Read the Docs.
 
 ## Security
 
