@@ -31,6 +31,9 @@ exclude_patterns = []
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
+# Set the canonical URL to help with redirects
+html_baseurl = 'https://mechafil-server.readthedocs.io/en/latest/'
+
 # -- Intersphinx configuration -----------------------------------------------
 
 intersphinx_mapping = {
