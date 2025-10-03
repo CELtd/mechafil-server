@@ -96,3 +96,65 @@ class SimulationResults:
             "input": self.input_data,
             "simulation_output": self.simulation_output
         }
+
+@dataclass
+class FetchDataResults:
+    data: Dict[str, Union[List[float], float, str]]
+
+    @classmethod
+    def from_raw(
+        cls,
+        hist_arrays: Dict[str, Any],
+        offline_data: Dict[str, Any],
+        smoothed_rbp: float,
+        smoothed_rr: float,
+        smoothed_fpr: float
+    ) -> "FetchDataResults":
+        """
+        Build FetchDataResults from the raw historical arrays,
+        offline data, and smoothed metrics.
+        """
+        combined_data = {}
+        # Smoothed metrics -> represent as "averaged over previous 30 days"
+        combined_data["raw_byte_power_averaged_over_previous_30days"] = round(float(smoothed_rbp), 6)
+        combined_data["renewal_rate_averaged_over_previous_30days"] = round(float(smoothed_rr), 6)
+        combined_data["filplus_rate_averaged_over_previous_30days"] = round(float(smoothed_fpr), 6)
+
+        # Historical arrays
+        for k, v in hist_arrays.items():
+            if hasattr(v, "__iter__") and not isinstance(v, str):
+                combined_data[k] = [round(float(x), 6) for x in v]
+            elif isinstance(v, (int, float)):
+                combined_data[k] = round(float(v), 6)
+            else:
+                combined_data[k] = v
+
+        # Offline data
+        for k, v in offline_data.items():
+            if hasattr(v, "__iter__") and not isinstance(v, str):
+                combined_data[k] = [round(float(x), 6) for x in v]
+            elif isinstance(v, (int, float)):
+                combined_data[k] = round(float(v), 6)
+            else:
+                combined_data[k] = v
+
+        return cls(data=combined_data)
+
+    def filter_fields(self, fields: Union[str, List[str]]) -> "FetchDataResults":
+        """
+        Return a new FetchDataResults with only the requested fields.
+        """
+        if isinstance(fields, str):
+            fields = [fields]
+
+        filtered = {f: self.data.get(f) for f in fields if f in self.data}
+        missing = [f for f in fields if f not in self.data]
+        if missing:
+            import logging
+            logging.warning(f"Requested fields not found in fetch results: {missing}")
+
+        return FetchDataResults(data=filtered)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict (for JSON responses)."""
+        return {"data": self.data}

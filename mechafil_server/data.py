@@ -303,8 +303,8 @@ class Data:
         pledge_release_length = historical_days + forecast_length
         
         # Trim expire vectors to forecast period only
-        new_data['rb_known_scheduled_expire_vec'] = hist_data['rb_known_scheduled_expire_vec'][:forecast_length]
-        new_data['qa_known_scheduled_expire_vec'] = hist_data['qa_known_scheduled_expire_vec'][:forecast_length]
+        new_data['rb_known_scheduled_expire_vec'] = hist_data['rb_known_scheduled_expire_vec'][historical_days:historical_days+forecast_length]
+        new_data['qa_known_scheduled_expire_vec'] = hist_data['qa_known_scheduled_expire_vec'][historical_days:historical_days+forecast_length]
         
         # Trim pledge release vector to historical + forecast period
         new_data['known_scheduled_pledge_release_full_vec'] = hist_data['known_scheduled_pledge_release_full_vec'][:pledge_release_length]

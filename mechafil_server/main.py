@@ -26,7 +26,7 @@ from .models import (
 from .data import Data
 from .config import settings
 from .scheduler import DataRefreshScheduler
-from .results import SimulationResults
+from .results import SimulationResults, FetchDataResults
 
 # Load environment variables from common locations
 load_dotenv()
@@ -137,19 +137,15 @@ async def root():
         "endpoints": {
             "health": "/health (GET) - Server health check and JAX backend info",
             "historical_data": "/historical-data (GET) - Historical data downsampled every week",
-            "historical_data_full": "/historical-data/full (GET) - Full historical data with arrays",
             "simulate": "/simulate (POST) - Run Filecoin forecast simulation downsampled every week. ",
-            "simulate_full": "/simulate/full (POST) - Run Filecoin forecast simulation with full detailed results",
         },
-        "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}' (averaged) or /simulate/full (detailed)",
+        "quick_test": "curl -X POST http://localhost:8000/simulate -H 'Content-Type: application/json' -d '{}' ",
         "template_info": "Empty request '{}' uses defaults from historical data",
     }
 
-
-### TODO: need to add the field selector so that the llm can understand what to fetch
 @app.get("/historical-data", tags=["Data"])
-async def get_historical_data():
-    """Get historical data reduced to Monday values (no averaging)."""
+async def get_historical_data_full():
+    """Get complete historical data with all values (no Monday filtering)."""
     global loaded_data
 
     if loaded_data is None:
@@ -159,64 +155,45 @@ async def get_historical_data():
         )
 
     try:
+        logger.info("Getting full historical data...")
+
         hist_data = loaded_data.get_historical_data()
         if not hist_data:
-            raise RuntimeError("No historical data loaded")
-        
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No historical data available",
+            )
+
         offline_data = hist_data["offline_data"]
         hist_rbp = hist_data["hist_rbp"]
         hist_rr = hist_data["hist_rr"]
         hist_fpr = hist_data["hist_fpr"]
-        
+
         smoothed_rbp = hist_data["smoothed_rbp"]
         smoothed_rr = hist_data["smoothed_rr"]
         smoothed_fpr = hist_data["smoothed_fpr"]
 
-        from datetime import timedelta
-
-        def select_mondays(data_array, start_date):
-            """Pick only values that correspond to Mondays."""
-            if not start_date:
-                # If we don't know the start date, return everything
-                return [round(float(x), 2) for x in data_array]
-
-            results = []
-            for i, val in enumerate(data_array):
-                current_date = start_date + timedelta(days=i)
-                if current_date.weekday() == 0:  # Monday
-                    results.append(round(float(val), 2))
-            return results
-
-        start_date = hist_data.get("start_date")
-
-        return {
-            "message": "Historical data reduced to Mondays only (no averaging)",
-            "smoothed_metrics": {
-                "raw_byte_power": round(float(smoothed_rbp), 2),
-                "renewal_rate": round(float(smoothed_rr), 2),
-                "filplus_rate": round(float(smoothed_fpr), 2),
+        # Wrap into FetchDataResults
+        results = FetchDataResults.from_raw(
+            hist_arrays={
+                "raw_byte_power": hist_rbp,
+                "renewal_rate": hist_rr,
+                "filplus_rate": hist_fpr,
             },
-            "monday_arrays": {
-                "raw_byte_power": select_mondays(hist_rbp, start_date),
-                "renewal_rate": select_mondays(hist_rr, start_date),
-                "filplus_rate": select_mondays(hist_fpr, start_date),
-            },
-            "offline_data_mondays": {
-                k: (
-                    select_mondays(v, start_date)
-                    if hasattr(v, "__iter__") and not isinstance(v, str) and len(v) > 1
-                    else [round(float(v), 2)] if isinstance(v, (int, float)) else v
-                )
-                for k, v in offline_data.items()
-            },
-        }
+            offline_data=offline_data,
+            smoothed_rbp=smoothed_rbp,
+            smoothed_rr=smoothed_rr,
+            smoothed_fpr=smoothed_fpr,
+        )
+
+        return results.to_dict()
+
     except Exception as e:
-        logger.error(f"Error retrieving historical data: {e}")
+        logger.error(f"Error retrieving full historical data: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving historical data: {str(e)}",
         )
-
 
 @app.post("/simulate", tags=["Simulation"])
 async def simulate(req: SimulationRequest):
