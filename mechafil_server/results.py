@@ -221,6 +221,34 @@ class FetchDataResults:
 
         return cls(data=combined_data)
 
+    def downsample_mondays(self, start_date: date) -> "FetchDataResults":
+        """
+        Return a new FetchDataResults object with arrays downsampled to Mondays.
+
+        Args:
+            start_date: The starting date for the historical data arrays
+
+        Returns:
+            New FetchDataResults with Monday-only values for array fields
+        """
+        def select_mondays(data_array, start_date):
+            mondays = []
+            for i, val in enumerate(data_array):
+                current = start_date + timedelta(days=i)
+                if current.weekday() == 0:  # Monday
+                    mondays.append(round(float(val), 6))
+            return mondays
+
+        downsampled = {}
+        for k, v in self.data.items():
+            if isinstance(v, list) and len(v) > 1:
+                downsampled[k] = select_mondays(v, start_date)
+            else:
+                # Keep scalars and single-element arrays unchanged
+                downsampled[k] = v
+
+        return FetchDataResults(data=downsampled)
+
     def filter_fields(self, fields: Union[str, List[str]]) -> "FetchDataResults":
         """
         Return a new FetchDataResults with only the requested fields.

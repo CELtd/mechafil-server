@@ -145,7 +145,7 @@ async def root():
 
 @app.get("/historical-data", tags=["Data"])
 async def get_historical_data_full():
-    """Get complete historical data with all values (no Monday filtering)."""
+    """Get historical data downsampled to Mondays for visualization."""
     global loaded_data
 
     if loaded_data is None:
@@ -155,7 +155,7 @@ async def get_historical_data_full():
         )
 
     try:
-        logger.info("Getting full historical data...")
+        logger.info("Getting historical data (downsampled to Mondays)...")
 
         hist_data = loaded_data.get_historical_data()
         if not hist_data:
@@ -173,6 +173,8 @@ async def get_historical_data_full():
         smoothed_rr = hist_data["smoothed_rr"]
         smoothed_fpr = hist_data["smoothed_fpr"]
 
+        start_date = hist_data["start_date"]
+
         # Wrap into FetchDataResults
         results = FetchDataResults.from_raw(
             hist_arrays={
@@ -186,10 +188,13 @@ async def get_historical_data_full():
             smoothed_fpr=smoothed_fpr,
         )
 
+        # Downsample to Mondays
+        results = results.downsample_mondays(start_date)
+
         return results.to_dict()
 
     except Exception as e:
-        logger.error(f"Error retrieving full historical data: {e}")
+        logger.error(f"Error retrieving historical data: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving historical data: {str(e)}",
