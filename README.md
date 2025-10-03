@@ -129,12 +129,9 @@ Core Endpoints
 
 Historical Data
 - `GET /historical-data` — Summary of loaded historical data.
-- `GET /historical-data/full` — Full historical arrays and smoothed values.
 
 Simulation
 - `POST /simulate` — Run a forecast with weekly averaged results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
-- `POST /simulate/full` — Run a forecast with full detailed results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
-
 
 ## Examples
 
