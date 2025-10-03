@@ -131,7 +131,7 @@ Historical Data
 - `GET /historical-data` — Summary of loaded historical data.
 
 Simulation
-- `POST /simulate` — Run a forecast with weekly averaged results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`).
+- `POST /simulate` — Run a forecast with weekly averaged results (optional body: `rbp`, `rr`, `fpr`, `lock_target`, `forecast_length_days`, `sector_duration_days`, `output`).
 
 ## Examples
 
@@ -139,11 +139,12 @@ Simulation
 
 The `/simulate` endpoint accepts these optional parameters:
 - `rbp`: Raw byte power onboarding (PIB/day) - float or array
-- `rr`: Renewal rate (0..1) - float or array  
+- `rr`: Renewal rate (0..1) - float or array
 - `fpr`: FIL+ rate (0..1) - float or array
 - `lock_target`: Target lock ratio - float or array
 - `forecast_length_days`: Forecast length in days - integer
 - `sector_duration_days`: Average sector duration in days - integer
+- `output`: Specific output field(s) to return - string or array of strings (if not specified, returns all fields)
 
 All parameters are optional. Defaults are calculated from historical data or configuration.
 
@@ -174,6 +175,25 @@ curl -X POST http://localhost:8000/simulate \
     "lock_target": 0.3,
     "forecast_length_days": 365,
     "sector_duration_days": 540
+  }'
+```
+
+**Get only specific output fields:**
+```bash
+# Single field
+curl -X POST http://localhost:8000/simulate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "forecast_length_days": 365,
+    "output": "available_supply"
+  }'
+
+# Multiple fields
+curl -X POST http://localhost:8000/simulate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "forecast_length_days": 365,
+    "output": ["available_supply", "network_RBP_EIB", "circ_supply"]
   }'
 ```
 
