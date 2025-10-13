@@ -68,15 +68,15 @@ class SimulationResults:
         input_data = {
             "current date": current_date.strftime("%Y-%m-%d") if hasattr(current_date, "strftime") else current_date,
             "forecast_length_days": forecast_len,
-            "raw_byte_power": round(float(smoothed_rbp), 2),
-            "renewal_rate": round(float(smoothed_rr), 2),
-            "filplus_rate": round(float(smoothed_fpr), 2),
+            "raw_byte_power": round(float(smoothed_rbp), 6),
+            "renewal_rate": round(float(smoothed_rr), 6),
+            "filplus_rate": round(float(smoothed_fpr), 6),
         }
 
         simulation_output = {}
         for k, v in raw_results.items():
             if hasattr(v, "__iter__") and not isinstance(v, str):
-                arr = [round(float(item), 2) for item in v]
+                arr = [round(float(item), 6) for item in v]
                 if k not in ("1y_return_per_sector", "1y_sector_roi"):
                     if len(arr) > forecast_len and diff is not None:
                         arr = arr[diff: diff + forecast_len]
@@ -84,7 +84,7 @@ class SimulationResults:
                         arr = arr[:forecast_len]
                 simulation_output[k] = arr
             elif isinstance(v, (int, float)):
-                simulation_output[k] = round(float(v), 2)
+                simulation_output[k] = round(float(v), 6)
             else:
                 simulation_output[k] = v
 
@@ -99,7 +99,7 @@ class SimulationResults:
             for i, val in enumerate(data_array):
                 current = start_date + timedelta(days=i)
                 if current.weekday() == 0:  # Monday
-                    mondays.append(round(float(val), 2))
+                    mondays.append(round(float(val), 6))
             return mondays
 
         downsampled = {}
