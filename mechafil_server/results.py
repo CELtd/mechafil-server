@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, Dict, List, Union
+import numpy as np
 
 
 @dataclass
@@ -112,6 +113,37 @@ class SimulationResults:
         return SimulationResults(
             input_data=self.input_data.copy(),
             simulation_output=downsampled
+        )
+    
+    def trim_from_current_date(self, forecast_len: int) -> "SimulationResults":
+        """
+        Return a new SimulationResults object with arrays trimmed.
+        Allows special trimming rules for certain fields.
+        """
+
+        trimmed = {}
+        for key, values in self.simulation_output.items():
+            if isinstance(values, (list, np.ndarray)):
+
+                if key == "1y_sector_roi":
+                    # slice [-forecast_len-1 : -1]
+                    trimmed[key] = values[-forecast_len-1:-1]
+
+                elif key == "1y_return_per_sector":
+                    # slice [-forecast_len :]
+                    trimmed[key] = values[-forecast_len:]
+
+                else:
+                    # default trim: match forecast_len
+                    trimmed[key] = values[-forecast_len:]
+
+            else:
+                # pass through scalars / non-sequences unchanged
+                trimmed[key] = values
+
+        return SimulationResults(
+            input_data=self.input_data.copy(),
+            simulation_output=trimmed
         )
 
     def filter_fields(self, fields: Union[str, List[str]]) -> "SimulationResults":

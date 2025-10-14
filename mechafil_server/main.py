@@ -284,6 +284,7 @@ async def simulate(req: SimulationRequest):
         )
 
         # Downsample to Mondays
+        results = results.trim_from_current_date(forecast_len)
         results = results.downsample_mondays(start_date)
         
         # Filter output if requested
@@ -295,6 +296,94 @@ async def simulate(req: SimulationRequest):
     except Exception as e:
         logger.error(f"Simulation error: {e}")
         raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
+
+@app.post("/simulate/full", tags=["Simulation"])
+async def simulatefull(req: SimulationRequest):
+    """
+    Run a Filecoin forecast simulation with weekly averaged results.
+
+    Example curl commands:
+      # Get all simulation results
+      curl -X POST http://localhost:8000/simulate/full \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 365, "lock_target": 0.3}'
+      
+      # Get only specific output field
+      curl -X POST http://localhost:8000/simulate \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 365, "output": "available_supply"}'
+      
+      # Get multiple specific output fields
+      curl -X POST http://localhost:8000/simulate \
+        -H 'Content-Type: application/json' \
+        -d '{"forecast_length_days": 365, "output": ["available_supply", "network_RBP_EIB"]}'
+    """
+    global loaded_data
+
+    if loaded_data is None or loaded_data.historical_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Historical data not loaded yet; try again shortly"
+        )
+
+    # Get full simulation results first
+    try:
+        # Run the full simulation using the same logic as simulate_full
+        hist_data = loaded_data.get_historical_data()
+        if not hist_data:
+            raise RuntimeError("No historical data loaded")
+
+        # Use request values or fall back to historical data defaults
+        forecast_len = req.forecast_length_days if req.forecast_length_days is not None else settings.WINDOW_DAYS
+        sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else settings.SECTOR_DURATION_DAYS
+        
+        # Default values from smoothed historical data
+        smoothed_rbp = hist_data["smoothed_rbp"]
+        smoothed_rr = hist_data["smoothed_rr"] 
+        smoothed_fpr = hist_data["smoothed_fpr"]
+        
+        # Use request parameters or defaults
+        rbp_value = req.rbp if req.rbp is not None else smoothed_rbp
+        rr_value = req.rr if req.rr is not None else smoothed_rr
+        fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
+        lock_target = req.lock_target if req.lock_target is not None else settings.LOCK_TARGET
+
+        start_date = hist_data["start_date"]
+        current_date = hist_data["current_date"]
+        simulation_offline_data = loaded_data.trim_data_for_simulation(forecast_len)
+
+        # Convert parameters to JAX arrays (handle both constants and arrays)
+        if isinstance(rbp_value, list):
+            rbp = jnp.array(rbp_value)
+        else:
+            rbp = jnp.ones(forecast_len) * rbp_value
+            
+        if isinstance(rr_value, list):
+            rr = jnp.array(rr_value)
+        else:
+            rr = jnp.ones(forecast_len) * rr_value
+            
+        if isinstance(fpr_value, list):
+            fpr = jnp.array(fpr_value)
+        else:
+            fpr = jnp.ones(forecast_len) * fpr_value
+
+        raw_results = mechafil_sim.run_sim(
+            rbp, rr, fpr, lock_target, start_date, current_date,
+            forecast_len, sector_duration_days, simulation_offline_data,
+            use_available_supply=False
+        )
+        results = SimulationResults.from_raw(
+            raw_results, start_date, current_date, forecast_len,
+            smoothed_rbp, smoothed_rr, smoothed_fpr
+        )
+
+        return results.to_dict() 
+
+    except Exception as e:
+        logger.error(f"Simulation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
+
 
 
 def main():
