@@ -9,6 +9,8 @@ import argparse
 from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import mechafil_server.data as u
+from mechafil_server.results import SimulationResults
+from mechafil_server.config import settings
 from jax import config
 config.update("jax_enable_x64", True)
 import json
@@ -53,41 +55,34 @@ def run_simulation(forecast_length_days=10*365, sector_duration_days=540, lock_t
     print("Loading historical data ...")
     current_date = date.today() - timedelta(days=1)
     start_date = date(2022, 10, 10)
-    end_date = current_date + timedelta(days=forecast_length_days)
+    sim_len = settings.WINDOW_DAYS
+    end_date = current_date + timedelta(days=sim_len)
+    print(f"Hist days: {(current_date - start_date).days}")
     
     offline_data, smoothed_rbp, smoothed_rr, smoothed_fpr, hist_rbp, hist_rr, hist_fpr = get_offline_data(
         start_date, current_date, end_date
     )
 
-    rbp = jnp.ones(forecast_length_days) * smoothed_rbp
-    rr = jnp.ones(forecast_length_days) * smoothed_rr
-    fpr = jnp.ones(forecast_length_days) * smoothed_fpr
+    rbp = jnp.ones(sim_len) * smoothed_rbp
+    rr  = jnp.ones(sim_len) * smoothed_rr
+    fpr = jnp.ones(sim_len) * smoothed_fpr
     
     results = sim.run_sim(
         rbp, rr, fpr, lock_target, start_date, current_date,
-        forecast_length_days, sector_duration_days, offline_data,
+        sim_len, sector_duration_days, offline_data,
         use_available_supply=False
-    )
+    )    
 
     # Build results dict to match the FastAPI endpoint
-    results_to_save = {
-        "input": {
-            "forecast_length_days": forecast_length_days,
-        },
-        "smoothed_metrics": {
-            "raw_byte_power": float(smoothed_rbp),
-            "renewal_rate": float(smoothed_rr),
-            "filplus_rate": float(smoothed_fpr),
-        },
-        "simulation_output": {
-            k: (v.tolist() if hasattr(v, "tolist") else v)
-            for k, v in results.items()
-        },
-    }
+    results_to_save = SimulationResults.from_raw(
+            results, start_date, current_date, forecast_length_days,
+            smoothed_rbp, smoothed_rr, smoothed_fpr
+        )
+
 
     # Save to JSON file
     with open("offline_simulation.json", "w") as f:
-        json.dump(results_to_save, f, indent=2)
+        json.dump(results_to_save.to_dict(), f, indent=2)
 
     print("Offline simulation saved to offline_simulation.json")
 
@@ -95,7 +90,7 @@ def run_simulation(forecast_length_days=10*365, sector_duration_days=540, lock_t
     try:
         with open("api_results.json") as f:
             api_data = json.load(f)
-        print("Match with API:", api_data == results_to_save)
+        print("Match with API:", api_data == results_to_save.to_dict())
     except FileNotFoundError:
         print("No api_results.json found from API call, skipping comparison")
 

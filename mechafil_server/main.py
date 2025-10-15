@@ -255,27 +255,27 @@ async def simulate(req: SimulationRequest):
 
         start_date = hist_data["start_date"]
         current_date = hist_data["current_date"]
-        simulation_offline_data = loaded_data.trim_data_for_simulation(forecast_len)
+        sim_len = settings.WINDOW_DAYS
 
         # Convert parameters to JAX arrays (handle both constants and arrays)
         if isinstance(rbp_value, list):
             rbp = jnp.array(rbp_value)
         else:
-            rbp = jnp.ones(forecast_len) * rbp_value
+            rbp = jnp.ones(sim_len) * rbp_value
             
         if isinstance(rr_value, list):
             rr = jnp.array(rr_value)
         else:
-            rr = jnp.ones(forecast_len) * rr_value
+            rr = jnp.ones(sim_len) * rr_value
             
         if isinstance(fpr_value, list):
             fpr = jnp.array(fpr_value)
         else:
-            fpr = jnp.ones(forecast_len) * fpr_value
+            fpr = jnp.ones(sim_len) * fpr_value
 
         raw_results = mechafil_sim.run_sim(
             rbp, rr, fpr, lock_target, start_date, current_date,
-            forecast_len, sector_duration_days, simulation_offline_data,
+            sim_len, sector_duration_days, hist_data["offline_data"],
             use_available_supply=False
         )
         results = SimulationResults.from_raw(
@@ -284,7 +284,6 @@ async def simulate(req: SimulationRequest):
         )
 
         # Downsample to Mondays
-        results = results.trim_from_current_date(forecast_len)
         results = results.downsample_mondays(start_date)
         
         # Filter output if requested
@@ -350,34 +349,33 @@ async def simulatefull(req: SimulationRequest):
 
         start_date = hist_data["start_date"]
         current_date = hist_data["current_date"]
-        simulation_offline_data = loaded_data.trim_data_for_simulation(forecast_len)
+        sim_len = settings.WINDOW_DAYS 
 
         # Convert parameters to JAX arrays (handle both constants and arrays)
         if isinstance(rbp_value, list):
             rbp = jnp.array(rbp_value)
         else:
-            rbp = jnp.ones(forecast_len) * rbp_value
+            rbp = jnp.ones(sim_len) * rbp_value
             
         if isinstance(rr_value, list):
             rr = jnp.array(rr_value)
         else:
-            rr = jnp.ones(forecast_len) * rr_value
+            rr = jnp.ones(sim_len) * rr_value
             
         if isinstance(fpr_value, list):
             fpr = jnp.array(fpr_value)
         else:
-            fpr = jnp.ones(forecast_len) * fpr_value
+            fpr = jnp.ones(sim_len) * fpr_value
 
         raw_results = mechafil_sim.run_sim(
             rbp, rr, fpr, lock_target, start_date, current_date,
-            forecast_len, sector_duration_days, simulation_offline_data,
+            sim_len, sector_duration_days, hist_data["offline_data"],
             use_available_supply=False
         )
         results = SimulationResults.from_raw(
             raw_results, start_date, current_date, forecast_len,
             smoothed_rbp, smoothed_rr, smoothed_fpr
         )
-
         return results.to_dict() 
 
     except Exception as e:

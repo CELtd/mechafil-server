@@ -64,8 +64,7 @@ class SimulationResults:
         smoothed_rr,
         smoothed_fpr
     ) -> "SimulationResults":
-        diff = (current_date - start_date).days if hasattr(current_date, "__sub__") else None
-
+        historical_days = (current_date - start_date).days if hasattr(current_date, "__sub__") else None
         input_data = {
             "current date": current_date.strftime("%Y-%m-%d") if hasattr(current_date, "strftime") else current_date,
             "forecast_length_days": forecast_len,
@@ -73,23 +72,33 @@ class SimulationResults:
             "renewal_rate": round(float(smoothed_rr), 6),
             "filplus_rate": round(float(smoothed_fpr), 6),
         }
-
         simulation_output = {}
         for k, v in raw_results.items():
             if hasattr(v, "__iter__") and not isinstance(v, str):
+                # Convert to list and round values
                 arr = [round(float(item), 6) for item in v]
-                if k not in ("1y_return_per_sector", "1y_sector_roi"):
-                    if len(arr) > forecast_len and diff is not None:
-                        arr = arr[diff: diff + forecast_len]
-                    if len(arr) > forecast_len:
-                        arr = arr[:forecast_len]
-                simulation_output[k] = arr
+                
+                # Apply specific slicing logic based on key type
+                if k in ['rb_sched_expire_power_pib', 'qa_sched_expire_power_pib']:
+                    # These are already forecast-only, just truncate to forecast_len
+                    simulation_output[k] = arr[:forecast_len]
+                elif k in ['1y_return_per_sector', '1y_sector_roi']:
+                    # These have reduced length due to convolution
+                    # Slice from historical_days if the array is long enough
+                    if historical_days is not None and len(arr) > historical_days:
+                        simulation_output[k] = arr[historical_days:historical_days + forecast_len]
+                    else:
+                        simulation_output[k] = arr  # Keep as-is if too short
+                else:
+                    # Most arrays: slice from historical_days onward, then truncate to forecast_len
+                    if historical_days is not None and len(arr) > historical_days:
+                        arr = arr[historical_days:]
+                    simulation_output[k] = arr[:forecast_len]
             elif isinstance(v, (int, float)):
                 simulation_output[k] = round(float(v), 6)
             else:
                 simulation_output[k] = v
-
-        return cls(input_data=input_data, simulation_output=simulation_output)
+        return cls(input_data=input_data, simulation_output=simulation_output) 
 
     def downsample_mondays(self, start_date: date) -> "SimulationResults":
         """
