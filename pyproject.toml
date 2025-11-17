@@ -25,6 +25,8 @@ dill = "^0.3.6"
 diskcache = "^5.6.0"
 # Data handling
 pandas = "^2.0.0"
+# HTTP client for external cache
+httpx = "^0.24.0"
 # Git dependencies
 pystarboard = {git = "https://github.com/CELtd/pystarboard.git"}
 mechafil-jax = {git = "https://github.com/CELtd/mechafil-jax.git"}

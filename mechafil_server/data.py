@@ -10,7 +10,7 @@ from typing import Dict, Union, Any, Tuple
 from datetime import date, timedelta
 from diskcache import Cache
 
-
+import httpx
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -42,6 +42,38 @@ class Data:
     # ------------------------------------------------------------------
     # Data fetching
     # ------------------------------------------------------------------
+
+    def try_external_cache(self, start_date: date, current_date: date, end_date: date) -> Dict[str, Any] | None:
+        """Try to fetch data from external cache service.
+        
+        Returns:
+            Dict containing the cached data if successful, None if failed or not configured
+        """
+        if not settings.USE_EXTERNAL_CACHE:
+            return None
+            
+        try:
+            logger.info(f"Trying external cache for {start_date} to {current_date} (forecast to {end_date})")
+            
+            with httpx.Client(timeout=30.0) as client:
+                # Try to get the cached data using the same key format as local cache
+                cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+                response = client.get(f"{settings.EXTERNAL_CACHE_URL}/cache/{cache_key}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info("Successfully retrieved data from external cache")
+                    return data
+                elif response.status_code == 404:
+                    logger.info("Data not found in external cache, will fetch fresh data")
+                    return None
+                else:
+                    logger.warning(f"External cache returned status {response.status_code}, will fetch fresh data")
+                    return None
+                    
+        except Exception as e:
+            logger.warning(f"Failed to connect to external cache: {e}. Will fetch fresh data")
+            return None
 
     def get_offline_data(self, start_date: date, current_date: date, end_date: date) -> Dict[str, Any]:
         """Fetch offline data and compute smoothed historical metrics."""
@@ -90,7 +122,13 @@ class Data:
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
             cache_key = f"offline_data_{start_date}{current_date}{end_date}"
-            cached_result = cache.get(cache_key)
+            
+            # Try external cache first if enabled
+            cached_result = self.try_external_cache(start_date, current_date, end_date)
+            
+            # Fallback to local cache if external cache didn't work
+            if cached_result is None:
+                cached_result = cache.get(cache_key)
 
             if cached_result is not None:
                 logger.info(f"Found cached historical data for current_date={current_date}.")
@@ -161,12 +199,35 @@ class Data:
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
             cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+            
+            # Try external cache first if enabled (even during refresh)
+            cached_result = self.try_external_cache(start_date, current_date, end_date)
+            
+            if cached_result is not None:
+                logger.info(f"Found fresh data in external cache for current_date={current_date}")
+                try:
+                    # Update instance fields
+                    self.historical_data = cached_result
+                    self.start_date = start_date
+                    self.current_date = current_date
+                    self.smoothed_hist_rbp = cached_result["smoothed_rbp"]
+                    self.smoothed_hist_rr = cached_result["smoothed_rr"]
+                    self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
+        
+                    # Save new data to local cache as well
+                    cache.set(cache_key, cached_result)
+        
+                    logger.info("Historical data refreshed from external cache and cached locally!")
+                    return  # success, exit loop
+                except Exception as e:
+                    logger.warning(f"Failed to process data from external cache: {e}")
+                    # Continue to fetch fresh data below
     
-            # Clear relevant cache entry before fetching
+            # Clear relevant local cache entry before fetching fresh data
             if cache_key in cache:
                 try:
                     del cache[cache_key]
-                    logger.info(f"Cleared old cache entry for current_date={current_date}")
+                    logger.info(f"Cleared old local cache entry for current_date={current_date}")
                 except Exception as e:
                     logger.warning(f"Failed to clear cache entry {cache_key}: {e}")
     

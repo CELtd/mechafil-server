@@ -47,6 +47,10 @@ class Settings:
     # Historical data averaging settings
     USE_WEEKLY_AVERAGING: bool = os.getenv("USE_WEEKLY_AVERAGING", "true").lower() == "true"
     
+    # External cache service settings
+    EXTERNAL_CACHE_URL: str = os.getenv("EXTERNAL_CACHE_URL", "http://localhost:8001")
+    USE_EXTERNAL_CACHE: bool = os.getenv("USE_EXTERNAL_CACHE", "false").lower() == "true"
+    
     @property
     def has_spacescope_auth(self) -> bool:
         """Check if spacescope authentication is configured."""
