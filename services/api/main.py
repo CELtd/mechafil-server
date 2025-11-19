@@ -395,7 +395,7 @@ def main():
     logger.info(f"Starting server on {host}:{port}")
 
     uvicorn.run(
-        "mechafil_server.main:app",
+        "services.api.main:app",
         host=host,
         port=port,
         reload=reload,

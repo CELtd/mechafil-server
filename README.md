@@ -1,6 +1,6 @@
-# MechaFil Server
+# Mechafil Server
 
-A production-ready FastAPI service that provides HTTP endpoints for running Filecoin economic forecasts using real historical blockchain data and sophisticated simulation models.
+A microservices architecture for mechafil-jax simulations with serverless deployment patterns.
 
 ## Overview
 
@@ -30,11 +30,12 @@ MechaFil Server is a web service that wraps the [mechafil-jax](https://github.co
 
 ### Key Components
 
-- **`mechafil_server/main.py`**: FastAPI application with endpoint definitions
-- **`mechafil_server/data.py`**: Data processing and historical metrics calculation  
-- **`mechafil_server/models.py`**: Pydantic models for request/response validation
-- **`mechafil_server/config.py`**: Configuration management and constants
-- **`mechafil_server/scheduler.py`**: Background scheduler for automated daily data refresh
+- **`services/api/main.py`**: FastAPI application with endpoint definitions
+- **`services/api/data.py`**: Shared-cache reader that feeds the simulation engine  
+- **`services/api/models.py`**: Pydantic models for request/response validation
+- **`shared/config.py`**: Configuration management shared by the API and cache updater
+- **`services/api/scheduler.py`**: Background scheduler that reloads cached data on a cadence
+- **`services/cache_updater/`**: Long-running or one-shot job that populates the cache volume from Spacescope
 - **`tests/`**: Production-grade test suite with API validation
 
 
@@ -59,9 +60,9 @@ This installs the server and all dependencies declared in `pyproject.toml` (incl
 
 ## Configure Data Access (Spacescope)
 
-The server fetches historical data at startup via Spacescope/Starboard (through `pystarboard`). You need a Spacescope API token.
+The cache-updater service fetches historical data via Spacescope/Starboard (through `pystarboard`). Provide credentials so it can authenticate before writing to the shared cache volume.
 
-Set credentials via environment variables (the server loads `.env` from the repo root or from this folder, and also `.test-env` from the repo root):
+Set credentials via environment variables (both services load `.env` from the repo root or from this folder, and also `.test-env` from the repo root):
 
 - `SPACESCOPE_TOKEN` — bearer token string, e.g. `Bearer YOUR_TOKEN_HERE`
 - or `SPACESCOPE_AUTH_FILE` — path to a JSON file with `{ "auth_key": "Bearer YOUR_TOKEN_HERE" }`
@@ -82,16 +83,16 @@ SPACESCOPE_TOKEN=Bearer YOUR_TOKEN_HERE
 ## Historical Data & Automatic Refresh
 
 ### Initial Data Loading
-- On first startup, the server fetches and caches historical data under `mechafil-server/data/` (this may take a few minutes).
-- `current_date` is set to "yesterday".
+- Prime the shared cache by running the cache updater (`poetry run cache-updater`, `docker-compose run --rm --entrypoint="" cache-updater python -m services.cache_updater.main --once`, or the Fly.io job described below). It fetches data from Spacescope and writes DiskCache entries into the shared volume (defaults to `/data/shared-cache` or `./shared-cache` when running locally).
+- When the API starts it reads the newest cache entry from that shared volume (`USE_SHARED_CACHE=true`). If no cache data exists yet the API fails fast so you know the updater must run first.
 
 ### Automated Daily Refresh
 The server automatically refreshes historical data daily at a configurable time:
 
 - **Default**: Data refreshes every day at `02:00 UTC`
 - **Configuration**: Set `RELOAD_TRIGGER=HH:MM` in your `.env` file (e.g., `RELOAD_TRIGGER=03:30` for 3:30 AM UTC)
-- **Process**: The scheduler clears the cache and fetches fresh data from Spacescope, exactly like startup
-- **Resilience**: If refresh fails, the server continues running with existing cached data
+- **Process**: The cache-updater job keeps the shared cache warm. The API scheduler simply reloads from disk at `RELOAD_TRIGGER` (or every 2 minutes when `RELOAD_TEST_MODE=true`) so the newest cached snapshot is picked up without restarting the container.
+- **Resilience**: If refresh fails, the server continues running with whatever cached snapshot is already loaded.
 
 ### Testing Mode
 For development and testing, enable frequent refresh cycles:
@@ -109,11 +110,17 @@ The scheduler runs as a background asyncio task and handles errors gracefully wi
 From the `mechafil-server` folder:
 
 ```
-# Start with Poetry
-poetry run mechafil-server
+# Start with Poetry (shared cache must already be populated)
+poetry run mechafil-api
 
 # Or run Uvicorn explicitly
-poetry run uvicorn mechafil_server.main:app --reload --host 0.0.0.0 --port 8000
+poetry run uvicorn services.api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Refresh the cache whenever you need new data:
+
+```
+poetry run cache-updater --once
 ```
 
 The server will start on `http://localhost:8000`.
@@ -125,6 +132,87 @@ The server will start on `http://localhost:8000`.
 - **Read the Docs**: http://localhost:8000/documentation/ (after building docs)
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
+
+
+## Deployment Patterns
+
+### Docker Compose (local or single VM)
+
+Use the provided `docker-compose.yml` to replicate the serverless-style split between cache updater and API:
+
+```
+# Keep the cache fresh in the background
+docker-compose up cache-updater -d
+
+# Bring the API online on demand (press Ctrl+C to stop)
+docker-compose up api
+
+# Or run the updater once (e.g., cron job)
+docker-compose run --rm --entrypoint="" cache-updater python -m services.cache_updater.main --once
+```
+
+The compose file mounts the `shared_cache` volume at `/data/shared-cache` so both services read/write the same DiskCache directory.
+
+### Fly.io Deployment
+
+You can mirror the same pattern on Fly.io: one persistent volume, a scheduled cache updater, and an auto-starting API Machine.
+
+1. **Create a shared cache volume** (pick the region where both apps will run):
+   ```bash
+   fly volumes create shared_cache --region fra --size 10
+   ```
+
+2. **Deploy the cache updater app** (long-running or invoked on a schedule):
+   - `fly launch --name mechafil-cache-updater --no-deploy`
+   - In `fly.toml`, point to `docker/cache-updater.Dockerfile`, mount the volume, and pass env vars:
+     ```toml
+     [build]
+     dockerfile = "docker/cache-updater.Dockerfile"
+
+     [mounts]
+     source="shared_cache"
+     destination="/data/shared-cache"
+
+     [env]
+     USE_SHARED_CACHE="true"
+     SHARED_CACHE_DIR="/data/shared-cache"
+     SPACESCOPE_TOKEN="Bearer ..."
+     ```
+   - `fly deploy`
+   - To mimic a Lambda-style job, trigger it via Machines or GitHub Actions:
+     ```bash
+     fly machine run \
+       --app mechafil-cache-updater \
+       --mount shared_cache:/data/shared-cache \
+       --entrypoint "" \
+       -- python -m services.cache_updater.main --once
+     ```
+
+3. **Deploy the API app** (auto-starts on incoming requests):
+   - `fly launch --name mechafil-api --no-deploy`
+   - Configure `docker/api.Dockerfile`, mount the same volume, and set env vars:
+     ```toml
+     [build]
+     dockerfile = "docker/api.Dockerfile"
+
+     [mounts]
+     source="shared_cache"
+     destination="/data/shared-cache"
+
+     [env]
+     USE_SHARED_CACHE="true"
+     SHARED_CACHE_DIR="/data/shared-cache"
+     ```
+   - Enable serverless-style behavior with Machines:
+     ```toml
+     [http_service]
+     internal_port = 8000
+     auto_stop_machines = "stop"
+     auto_start_machines = true
+     ```
+   - `fly deploy`
+
+With this setup the updater keeps the Fly volume fresh (either continuously or via scheduled runs) and the API stays "cold" until Fly routes a request, similar to API Gateway + Lambda backed by EFS.
 
 
 ## API

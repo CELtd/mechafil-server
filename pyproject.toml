@@ -1,10 +1,13 @@
 [tool.poetry]
 name = "mechafil-server"
 version = "0.1.0"
-description = "FastAPI server for running mechafil-jax simulations"
+description = "Mechafil microservices: API server and cache updater for mechafil-jax simulations"
 authors = ["CEL Team"]
 readme = "README.md"
-packages = [{include = "mechafil_server"}]
+packages = [
+    {include = "services"},
+    {include = "shared"}
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -55,8 +58,9 @@ requests = "^2.31.0"
 sphinx-autobuild = "^2024.0.0"
 
 [tool.poetry.scripts]
-mechafil-server = "mechafil_server.main:main"
-build-docs = "mechafil_server.build_docs:main"
+mechafil-api = "services.api.main:main"
+cache-updater = "services.cache_updater.main:main"
+build-docs = "services.api.build_docs:main"
 
 [build-system]
 requires = ["poetry-core"]

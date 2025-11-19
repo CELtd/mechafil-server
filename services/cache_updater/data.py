@@ -10,7 +10,7 @@ from typing import Dict, Union, Any, Tuple
 from datetime import date, timedelta
 from diskcache import Cache
 
-import httpx
+
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -42,38 +42,6 @@ class Data:
     # ------------------------------------------------------------------
     # Data fetching
     # ------------------------------------------------------------------
-
-    def try_external_cache(self, start_date: date, current_date: date, end_date: date) -> Dict[str, Any] | None:
-        """Try to fetch data from external cache service.
-        
-        Returns:
-            Dict containing the cached data if successful, None if failed or not configured
-        """
-        if not settings.USE_EXTERNAL_CACHE:
-            return None
-            
-        try:
-            logger.info(f"Trying external cache for {start_date} to {current_date} (forecast to {end_date})")
-            
-            with httpx.Client(timeout=30.0) as client:
-                # Try to get the cached data using the same key format as local cache
-                cache_key = f"offline_data_{start_date}{current_date}{end_date}"
-                response = client.get(f"{settings.EXTERNAL_CACHE_URL}/cache/{cache_key}")
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    logger.info("Successfully retrieved data from external cache")
-                    return data
-                elif response.status_code == 404:
-                    logger.info("Data not found in external cache, will fetch fresh data")
-                    return None
-                else:
-                    logger.warning(f"External cache returned status {response.status_code}, will fetch fresh data")
-                    return None
-                    
-        except Exception as e:
-            logger.warning(f"Failed to connect to external cache: {e}. Will fetch fresh data")
-            return None
 
     def get_offline_data(self, start_date: date, current_date: date, end_date: date) -> Dict[str, Any]:
         """Fetch offline data and compute smoothed historical metrics."""
@@ -115,20 +83,14 @@ class Data:
         current_date = date.today() - timedelta(days=1)
         start_date = settings.STARTUP_DATE
     
-        # Load cache object
-        cache = Cache(settings.CACHE_DIR)
+        # Load cache object using shared directory
+        cache = Cache(settings.SHARED_CACHE_DIR)
 
         attempt = 0
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
             cache_key = f"offline_data_{start_date}{current_date}{end_date}"
-            
-            # Try external cache first if enabled
-            cached_result = self.try_external_cache(start_date, current_date, end_date)
-            
-            # Fallback to local cache if external cache didn't work
-            if cached_result is None:
-                cached_result = cache.get(cache_key)
+            cached_result = cache.get(cache_key)
 
             if cached_result is not None:
                 logger.info(f"Found cached historical data for current_date={current_date}.")
@@ -181,7 +143,7 @@ class Data:
                 else:
                     current_date -= timedelta(days=1)
                     logger.info(f"Retrying... with new current_date={current_date}")
- 
+
             
     def refresh_historical_data(self) -> None:
         """Refresh historical data by clearing cache and reloading.
@@ -193,41 +155,18 @@ class Data:
         
         current_date = date.today() - timedelta(days=1)
         start_date = settings.STARTUP_DATE
-        cache = Cache(settings.CACHE_DIR)
+        cache = Cache(settings.SHARED_CACHE_DIR)
     
         attempt = 0
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
             cache_key = f"offline_data_{start_date}{current_date}{end_date}"
-            
-            # Try external cache first if enabled (even during refresh)
-            cached_result = self.try_external_cache(start_date, current_date, end_date)
-            
-            if cached_result is not None:
-                logger.info(f"Found fresh data in external cache for current_date={current_date}")
-                try:
-                    # Update instance fields
-                    self.historical_data = cached_result
-                    self.start_date = start_date
-                    self.current_date = current_date
-                    self.smoothed_hist_rbp = cached_result["smoothed_rbp"]
-                    self.smoothed_hist_rr = cached_result["smoothed_rr"]
-                    self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
-        
-                    # Save new data to local cache as well
-                    cache.set(cache_key, cached_result)
-        
-                    logger.info("Historical data refreshed from external cache and cached locally!")
-                    return  # success, exit loop
-                except Exception as e:
-                    logger.warning(f"Failed to process data from external cache: {e}")
-                    # Continue to fetch fresh data below
     
-            # Clear relevant local cache entry before fetching fresh data
+            # Clear relevant cache entry before fetching
             if cache_key in cache:
                 try:
                     del cache[cache_key]
-                    logger.info(f"Cleared old local cache entry for current_date={current_date}")
+                    logger.info(f"Cleared old cache entry for current_date={current_date}")
                 except Exception as e:
                     logger.warning(f"Failed to clear cache entry {cache_key}: {e}")
     
@@ -325,57 +264,8 @@ class Data:
         }
 
 
-    def trim_data_for_simulation(self, forecast_length: int) -> Dict[str, Any]:
-        """Trim simulation data vectors to match the forecast time horizon.
-        
-        This method adjusts the data vectors to align with simulation requirements:
-        - Expire vectors are limited to the forecast period only
-        - Pledge release vector spans both historical + forecast periods
-        
-        The trimming ensures that:
-        1. `rb_known_scheduled_expire_vec` and `qa_known_scheduled_expire_vec`
-           contain only future expiration data (forecast period)
-        2. `known_scheduled_pledge_release_full_vec` contains historical +
-           forecast pledge release data (full simulation period)
-           
-        Args:
-            forecast_length: Number of days to forecast into the future
-            
-        Returns:
-            Dict containing trimmed simulation data with proper vector sizes
-            
-        Raises:
-            ValueError: If historical_data is not loaded or forecast_length is invalid
-        """
-        if not self.historical_data:
-            raise ValueError("Historical data must be loaded before trimming")
-            
-        if forecast_length <= 0:
-            raise ValueError(f"forecast_length must be positive, got {forecast_length}")
-            
-        if not self.start_date or not self.current_date:
-            raise ValueError("Start date and current date must be set")
-
-        hist_data = self.historical_data['offline_data']
-        new_data = hist_data.copy()
-        
-        # Calculate the historical period length
-        historical_days = int((self.current_date - self.start_date).days)
-        pledge_release_length = historical_days + forecast_length
-        
-        # Trim expire vectors to forecast period only
-        #new_data['rb_known_scheduled_expire_vec'] = hist_data['rb_known_scheduled_expire_vec'][historical_days:historical_days+forecast_length]
-        #new_data['qa_known_scheduled_expire_vec'] = hist_data['qa_known_scheduled_expire_vec'][historical_days:historical_days+forecast_length]
-        new_data['rb_known_scheduled_expire_vec'] = hist_data['rb_known_scheduled_expire_vec'][:forecast_length]
-        new_data['qa_known_scheduled_expire_vec'] = hist_data['qa_known_scheduled_expire_vec'][:forecast_length]
-        
-        # Trim pledge release vector to historical + forecast period
-        new_data['known_scheduled_pledge_release_full_vec'] = hist_data['known_scheduled_pledge_release_full_vec'][:pledge_release_length]
-
-        return new_data
-
 # ------------------------------------------------------------------
-# Utility functions
+# Utility functions (copied from mechafil-server)
 # ------------------------------------------------------------------
 
 PIB = 2**50

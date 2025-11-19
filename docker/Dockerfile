@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install poetry
+
+# Copy Poetry files and README
+COPY pyproject.toml poetry.lock* README.md ./
+
+# Copy application code
+COPY cache_updater/ ./cache_updater/
+
+# Configure Poetry: Don't create virtual environment, install dependencies
+RUN poetry config virtualenvs.create false \
+    && poetry install --only=main --no-interaction --no-ansi
+
+# Create shared cache directory (will be mounted as volume)
+RUN mkdir -p /data/shared-cache
+
+# Run the background cache updater service
+CMD ["python", "-m", "cache_updater.main"]
