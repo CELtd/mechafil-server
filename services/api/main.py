@@ -27,7 +27,6 @@ from .models import (
 )
 from .data import Data
 from .config import settings
-from .scheduler import DataRefreshScheduler
 from .results import SimulationResults, FetchDataResults
 
 # Load environment variables from common locations
@@ -49,15 +48,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global data handler and scheduler
+# Global data handler
 loaded_data: Data | None = None
-data_scheduler: DataRefreshScheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application startup and shutdown."""
-    global loaded_data, data_scheduler
+    global loaded_data
 
     # Startup
     logger.info("Starting up Mechafil Server...")
@@ -69,11 +67,6 @@ async def lifespan(app: FastAPI):
         loaded_data.load_historical_data()
         logger.info("Historical data loaded successfully")
         
-        # Start the data refresh scheduler
-        data_scheduler = DataRefreshScheduler(loaded_data.refresh_historical_data)
-        data_scheduler.start()
-        logger.info(f"Data refresh scheduler started. Daily refresh at {settings.RELOAD_TRIGGER} UTC")
-        
     except Exception as e:
         logger.error(f"Failed to load historical data on startup: {e}")
         logger.warning("Server will continue without historical data")
@@ -82,16 +75,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Mechafil Server...")
-    if data_scheduler:
-        try:
-            await data_scheduler.stop_async()
-        except Exception as e:
-            logger.warning(f"Error stopping scheduler: {e}")
-            # Fallback to sync stop
-            try:
-                data_scheduler.stop()
-            except Exception as e2:
-                logger.warning(f"Error with fallback stop: {e2}")
 
 
 # Create FastAPI app

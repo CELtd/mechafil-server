@@ -34,7 +34,6 @@ MechaFil Server is a web service that wraps the [mechafil-jax](https://github.co
 - **`services/api/data.py`**: Shared-cache reader that feeds the simulation engine  
 - **`services/api/models.py`**: Pydantic models for request/response validation
 - **`shared/config.py`**: Configuration management shared by the API and cache updater
-- **`services/api/scheduler.py`**: Background scheduler that reloads cached data on a cadence
 - **`services/cache_updater/`**: Long-running or one-shot job that populates the cache volume from Spacescope
 - **`tests/`**: Production-grade test suite with API validation
 
@@ -87,22 +86,22 @@ SPACESCOPE_TOKEN=Bearer YOUR_TOKEN_HERE
 - When the API starts it reads the newest cache entry from that shared volume (`USE_SHARED_CACHE=true`). If no cache data exists yet the API fails fast so you know the updater must run first.
 
 ### Automated Daily Refresh
-The server automatically refreshes historical data daily at a configurable time:
+The **cache-updater service** automatically refreshes historical data daily at a configurable time:
 
-- **Default**: Data refreshes every day at `02:00 UTC`
+- **Default**: Refresh every day at `02:00 UTC`
 - **Configuration**: Set `RELOAD_TRIGGER=HH:MM` in your `.env` file (e.g., `RELOAD_TRIGGER=03:30` for 3:30 AM UTC)
-- **Process**: The cache-updater job keeps the shared cache warm. The API scheduler simply reloads from disk at `RELOAD_TRIGGER` (or every 2 minutes when `RELOAD_TEST_MODE=true`) so the newest cached snapshot is picked up without restarting the container.
-- **Resilience**: If refresh fails, the server continues running with whatever cached snapshot is already loaded.
+- **Process**: The cache updater fetches fresh data on schedule and writes it into the shared cache volume. The API always uses whatever snapshot is already on disk; restart the API (or let Fly auto-stop/start it) to pick up the most recent snapshot.
+- **Resilience**: If the updater fails, the previously cached snapshot remains in place until the next successful run.
 
 ### Testing Mode
-For development and testing, enable frequent refresh cycles:
+For development and testing, enable frequent refresh cycles on the **cache-updater** service:
 
 ```bash
 # Refresh every 2 minutes instead of daily
 RELOAD_TEST_MODE=true
 ```
 
-The scheduler runs as a background asyncio task and handles errors gracefully without interrupting server operations.
+This runs inside the updater's asyncio scheduler and does not involve the API container.
 
 
 ## Run
