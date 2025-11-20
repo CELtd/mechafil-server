@@ -116,11 +116,15 @@ poetry run mechafil-api
 poetry run uvicorn services.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Refresh the cache whenever you need new data:
+Refresh the cache whenever you need new data. Locally you can point the updater at any writable directory (e.g. `./shared-cache`) so you don't need a Docker volume:
 
 ```
-poetry run cache-updater --once
+USE_SHARED_CACHE=true \
+SHARED_CACHE_DIR=./shared-cache \
+poetry run python -m services.cache_updater.main --once
 ```
+
+Once populated, the API reads the snapshot from `SHARED_CACHE_DIR` at startup—restart the service whenever you want it to pick up freshly written data.
 
 The server will start on `http://localhost:8000`.
 
@@ -151,6 +155,8 @@ docker-compose run --rm --entrypoint="" cache-updater python -m services.cache_u
 ```
 
 The compose file mounts the `shared_cache` volume at `/data/shared-cache` so both services read/write the same DiskCache directory.
+
+You can keep `api` running continuously (leave `docker-compose up api` attached or add `-d`) or treat it as on-demand infrastructure: stop it when idle and start it only when you need to serve traffic. Every time the container boots it loads the latest snapshot from the mounted volume before answering requests.
 
 ### Fly.io Deployment
 
@@ -212,6 +218,8 @@ You can mirror the same pattern on Fly.io: one persistent volume, a scheduled ca
    - `fly deploy`
 
 With this setup the updater keeps the Fly volume fresh (either continuously or via scheduled runs) and the API stays "cold" until Fly routes a request, similar to API Gateway + Lambda backed by EFS.
+
+If you prefer an always-on API, simply omit the `auto_stop_machines` option (or scale to a Nomad app). Either way, startup loads the shared volume snapshot so requests always hit the most recent cache contents without any extra work.
 
 
 ## API
