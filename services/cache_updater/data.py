@@ -89,7 +89,8 @@ class Data:
         attempt = 0
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
-            cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+            # Use fixed cache key to always overwrite the same entry
+            cache_key = "offline_data_latest"
             cached_result = cache.get(cache_key)
 
             if cached_result is not None:
@@ -160,7 +161,8 @@ class Data:
         attempt = 0
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
-            cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+            # Use fixed cache key to always overwrite the same entry
+            cache_key = "offline_data_latest"
     
             # Clear relevant cache entry before fetching
             if cache_key in cache:

@@ -86,44 +86,34 @@ class Data:
                 "and SHARED_CACHE_DIR to be set. Make sure the cache-updater service is running."
             )
     
-        # Load any available cache data (don't search for specific dates)
+        # Load cache data using fixed key
         from diskcache import Cache
         cache = Cache(settings.SHARED_CACHE_DIR)
-        
-        # Get all cache keys
-        cache_keys = list(cache)
-        logger.info(f"Found {len(cache_keys)} cache entries")
-        
-        if not cache_keys:
+
+        # Use fixed cache key that matches cache_updater
+        cache_key = "offline_data_latest"
+        logger.info(f"Loading cache entry: {cache_key}")
+
+        cached_result = cache.get(cache_key)
+
+        if cached_result is None:
             raise RuntimeError(
-                "No cache data found in shared cache. "
+                f"No cache data found for key '{cache_key}' in shared cache. "
                 "Make sure the cache-updater service has run and populated the cache."
             )
-        
-        # Use the most recent cache entry
-        cache_key = cache_keys[-1]  # Use last entry (most recent)
-        logger.info(f"Loading cache entry: {cache_key}")
-        
+
         try:
-            cached_result = cache[cache_key]
-            
             # Save into self fields
             self.historical_data = cached_result
             self.smoothed_hist_rbp = cached_result["smoothed_rbp"]
             self.smoothed_hist_rr = cached_result["smoothed_rr"]
             self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
-            
-            # Extract dates from cache key: format is "offline_data_YYYY-MM-DDYYYY-MM-DDYYYY-MM-DD"
-            # Parse: offline_data_2022-10-102025-11-182035-11-16
-            key_suffix = cache_key.replace("offline_data_", "")
-            # Extract start_date (first 10 chars) and current_date (next 10 chars)
-            start_date_str = key_suffix[:10]
-            current_date_str = key_suffix[10:20]
-            
+
+            # Get dates from the cached data itself (they're stored in offline_data)
             from datetime import datetime
-            self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-            self.current_date = datetime.strptime(current_date_str, "%Y-%m-%d").date()
-            
+            self.start_date = settings.STARTUP_DATE
+            self.current_date = date.today() - timedelta(days=1)
+
             logger.info(f"Historical data loaded from shared cache successfully!")
             logger.info(f"Data period: {self.start_date} to {self.current_date}")
             return

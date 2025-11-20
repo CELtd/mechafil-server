@@ -1,0 +1,31 @@
+# Fly.io Configuration for MechaFil Cache Updater Service
+# This service runs continuously and updates the cache daily
+# It fetches data from Spacescope and writes to the shared volume
+
+app = "mechafil-cache-updater"
+primary_region = "fra"  # Frankfurt - must match API region for volume sharing
+
+# Build configuration - uses existing Docker image
+[build]
+  dockerfile = "docker/cache-updater.Dockerfile"
+
+# Environment variables available to the container
+[env]
+  USE_SHARED_CACHE = "true"                    # Enable shared cache mode
+  SHARED_CACHE_DIR = "/data/shared-cache"      # Cache mount point (same as API)
+  RELOAD_TRIGGER = "01:00"                     # Daily update time (1:00 AM UTC)
+  RELOAD_TEST_MODE = "false"                   # false = daily updates, true = 2-min updates
+
+# Volume mount - same volume as API service
+[mounts]
+  source = "shared_cache"                      # Volume name (must match volume creation)
+  destination = "/data/shared-cache"           # Where volume is mounted in container
+
+# VM resources - cache updater needs less memory than API
+[[vm]]
+  memory = "2gb"                               # RAM allocation
+  cpu_kind = "shared"                          # shared = cheaper
+  cpus = 1                                     # Single CPU sufficient
+
+# Process configuration
+# Note: No [http_service] section because this is a background worker, not an HTTP service
