@@ -15,8 +15,9 @@ RUN pip install poetry
 # Copy Poetry files and README
 COPY pyproject.toml poetry.lock* README.md ./
 
-# Copy application code
-COPY cache_updater/ ./cache_updater/
+# Copy all service code (API + cache-updater + shared)
+COPY shared/ ./shared/
+COPY services/ ./services/
 
 # Configure Poetry: Don't create virtual environment, install dependencies
 RUN poetry config virtualenvs.create false \
@@ -25,5 +26,5 @@ RUN poetry config virtualenvs.create false \
 # Create shared cache directory (will be mounted as volume)
 RUN mkdir -p /data/shared-cache
 
-# Run the background cache updater service
-CMD ["python", "-m", "cache_updater.main"]
+# Default command (will be overridden by process groups in fly.toml)
+CMD ["python", "-m", "services.api.main"]

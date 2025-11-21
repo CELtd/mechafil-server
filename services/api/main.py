@@ -128,6 +128,57 @@ async def root():
     else:
         return RedirectResponse(url="/docs")
 
+@app.post("/admin/update-cache", tags=["Admin"])
+async def update_cache():
+    """
+    Admin endpoint to trigger cache update from external source.
+
+    This endpoint should be called by GitHub Actions or other trusted external triggers
+    to update the shared cache with latest data from Spacescope.
+
+    Returns:
+        Status message indicating whether cache update was successful
+    """
+    global loaded_data
+
+    logger.info("Admin endpoint: Cache update triggered")
+
+    try:
+        # Import cache updater logic
+        from services.cache_updater.main import run_once
+        import asyncio
+
+        # Run the cache update (it's an async function)
+        logger.info("Starting cache update...")
+        exit_code = await run_once()
+
+        if exit_code != 0:
+            raise RuntimeError("Cache update returned non-zero exit code")
+
+        logger.info("Cache update completed successfully")
+
+        # Reload data in the API service
+        if loaded_data is None:
+            loaded_data = Data()
+
+        logger.info("Reloading historical data from updated cache...")
+        loaded_data.load_historical_data()
+        logger.info("Historical data reloaded successfully")
+
+        return {
+            "status": "success",
+            "message": "Cache updated and historical data reloaded",
+            "timestamp": date.today().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Cache update failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Cache update failed: {str(e)}",
+        )
+
+
 @app.get("/historical-data", tags=["Data"])
 async def get_historical_data_full():
     """Get historical data downsampled to Mondays for visualization."""
