@@ -14,7 +14,13 @@ Three files for Fly.io deployment:
 - ✅ Docker setup exists (`docker/api.Dockerfile`, `docker/cache-updater.Dockerfile`)
 - ✅ Git repository is on `external-cache` branch
 
-## Quick Deployment Commands
+## Deployment Options
+
+Choose between always-on (simple) or scheduled (cheaper):
+
+### Option A: Always-On Cache Updater (~$10-15/month)
+
+Simple setup - cache updater runs continuously and updates daily at 1:00 AM UTC.
 
 ```bash
 # 1. Install Fly CLI (one-time)
@@ -24,23 +30,83 @@ export PATH="$HOME/.fly/bin:$PATH"
 # 2. Login to Fly.io (one-time)
 flyctl auth login
 
-# 3. Create shared volume (one-time)
-flyctl volumes create shared_cache --region fra --size 3
-
-# 4. Deploy cache updater (populates cache)
+# 3. Create cache updater app and volume
 flyctl apps create mechafil-cache-updater
+flyctl volumes create shared_cache --region fra --size 3 --app mechafil-cache-updater
+
+# 4. Set secrets and deploy cache updater (runs continuously)
 flyctl secrets set SPACESCOPE_TOKEN="$(grep SPACESCOPE_TOKEN .env | cut -d= -f2-)" --app mechafil-cache-updater
 flyctl deploy --config fly-cache-updater.toml --app mechafil-cache-updater
 
-# 5. Wait for cache to populate (check logs)
+# 5. Wait for initial cache population (check logs)
 flyctl logs --app mechafil-cache-updater
+# Look for: "Historical data loaded and saved successfully!"
 
-# 6. Deploy API (serves requests)
+# 6. Create API app and deploy
 flyctl apps create mechafil-api
 flyctl deploy --config fly-api.toml --app mechafil-api
 
-# 7. Test
+# 7. Test your deployed API
 curl https://mechafil-api.fly.dev/health
+curl https://mechafil-api.fly.dev/historical-data
+curl -X POST https://mechafil-api.fly.dev/simulate -H "Content-Type: application/json" -d '{}'
+```
+
+### Option B: Scheduled Cache Updates (~$0-1/month) - RECOMMENDED
+
+Lambda-style: cache updater only runs when triggered by GitHub Actions daily.
+
+```bash
+# 1. Install Fly CLI (one-time)
+curl -L https://fly.io/install.sh | sh
+export PATH="$HOME/.fly/bin:$PATH"
+
+# 2. Login to Fly.io (one-time)
+flyctl auth login
+
+# 3. Create cache updater app (for initial run) and volume
+flyctl apps create mechafil-cache-updater
+flyctl volumes create shared_cache --region fra --size 3 --app mechafil-cache-updater
+
+# 4. Run initial cache population (one-shot)
+flyctl machine run \
+  --app mechafil-cache-updater \
+  --region fra \
+  --volume shared_cache:/data/shared-cache \
+  --env USE_SHARED_CACHE=true \
+  --env SHARED_CACHE_DIR=/data/shared-cache \
+  --env SPACESCOPE_TOKEN="$(grep SPACESCOPE_TOKEN .env | cut -d= -f2-)" \
+  --memory 2048 \
+  --dockerfile docker/cache-updater.Dockerfile \
+  --entrypoint "" \
+  -- python -m services.cache_updater.main --once
+
+# 5. Create API app and deploy
+flyctl apps create mechafil-api
+flyctl deploy --config fly-api.toml --app mechafil-api
+
+# 6. Set up GitHub Actions for daily updates
+# - Get Fly API token: flyctl auth token
+# - Add to GitHub Secrets as FLY_API_TOKEN
+# - Add SPACESCOPE_TOKEN to GitHub Secrets
+# - The workflow in .github/workflows/update-cache-daily.yml will run daily at 1:00 AM UTC
+# - Or manually trigger: Go to Actions tab > Daily Cache Update > Run workflow
+
+# 7. Test your deployed API
+curl https://mechafil-api.fly.dev/health
+curl https://mechafil-api.fly.dev/historical-data
+curl -X POST https://mechafil-api.fly.dev/simulate -H "Content-Type: application/json" -d '{}'
+```
+
+**Setting up GitHub Actions secrets:**
+```bash
+# Get Fly API token
+flyctl auth token
+
+# In GitHub repo:
+# Settings > Secrets and variables > Actions > New repository secret
+# Add: FLY_API_TOKEN = (paste token from above)
+# Add: SPACESCOPE_TOKEN = (your Spacescope token)
 ```
 
 ## After Deployment
