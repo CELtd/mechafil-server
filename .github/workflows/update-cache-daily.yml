@@ -1,0 +1,25 @@
+name: Daily Cache Update
+
+on:
+  schedule:
+    # Run daily at 1:00 AM UTC
+    - cron: '0 1 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  update-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Run Cache Update (One-Shot)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Start the stopped machine (it's configured to run --once)
+          flyctl machine start ${{ secrets.CACHE_MACHINE_ID }} --app mechafil-cache-updater
+
+          # Wait for it to complete (optional - monitors exit)
+          sleep 10
+          flyctl machine wait ${{ secrets.CACHE_MACHINE_ID }} --app mechafil-cache-updater --state stopped
