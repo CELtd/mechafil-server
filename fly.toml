@@ -28,6 +28,8 @@ primary_region = "fra"
   auto_start_machines = true   # Start on incoming request
   min_machines_running = 0     # True serverless
 
+  # No health checks - allows faster auto-stop when idle
+
 # VM configuration - single machine type
 [[vm]]
   memory = "2gb"

@@ -62,14 +62,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"JAX backend: {jax.lib.xla_bridge.get_backend().platform}")
     logger.info(f"JAX devices: {jax.devices()}")
 
-    try:
-        loaded_data = Data()
-        loaded_data.load_historical_data()
-        logger.info("Historical data loaded successfully")
-        
-    except Exception as e:
-        logger.error(f"Failed to load historical data on startup: {e}")
-        logger.warning("Server will continue without historical data")
+    # Initialize Data object but don't load cache yet (lazy loading for faster startup)
+    loaded_data = Data()
+    logger.info("Server started. Historical data will be loaded on first request.")
 
     yield
 
@@ -184,11 +179,20 @@ async def get_historical_data_full():
     """Get historical data downsampled to Mondays for visualization."""
     global loaded_data
 
-    if loaded_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Data handler not initialized",
-        )
+    # Lazy load: if data not loaded yet, load it now
+    if loaded_data is None or loaded_data.historical_data is None:
+        logger.info("Lazy loading historical data on first request...")
+        try:
+            if loaded_data is None:
+                loaded_data = Data()
+            loaded_data.load_historical_data()
+            logger.info("Historical data loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to load historical data: {str(e)}"
+            )
 
     try:
         logger.info("Getting historical data (downsampled to Mondays)...")
@@ -246,12 +250,12 @@ async def simulate(req: SimulationRequest):
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "lock_target": 0.3}'
-      
+
       # Get only specific output field
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "output": "available_supply"}'
-      
+
       # Get multiple specific output fields
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
@@ -259,11 +263,20 @@ async def simulate(req: SimulationRequest):
     """
     global loaded_data
 
+    # Lazy load: if data not loaded yet, load it now
     if loaded_data is None or loaded_data.historical_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Historical data not loaded yet; try again shortly"
-        )
+        logger.info("Lazy loading historical data on first request...")
+        try:
+            if loaded_data is None:
+                loaded_data = Data()
+            loaded_data.load_historical_data()
+            logger.info("Historical data loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to load historical data: {str(e)}"
+            )
 
     # Get full simulation results first
     try:
@@ -340,12 +353,12 @@ async def simulatefull(req: SimulationRequest):
       curl -X POST http://localhost:8000/simulate/full \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "lock_target": 0.3}'
-      
+
       # Get only specific output field
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "output": "available_supply"}'
-      
+
       # Get multiple specific output fields
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
@@ -353,11 +366,20 @@ async def simulatefull(req: SimulationRequest):
     """
     global loaded_data
 
+    # Lazy load: if data not loaded yet, load it now
     if loaded_data is None or loaded_data.historical_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Historical data not loaded yet; try again shortly"
-        )
+        logger.info("Lazy loading historical data on first request...")
+        try:
+            if loaded_data is None:
+                loaded_data = Data()
+            loaded_data.load_historical_data()
+            logger.info("Historical data loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to load historical data: {str(e)}"
+            )
 
     # Get full simulation results first
     try:

@@ -1,12 +1,15 @@
-# Quick Deployment Guide - Fly.io with GitHub Actions
+# Quick Deployment Guide - Single Machine with External Triggers
 
 ## What You're Deploying
 
-- **API Service**: FastAPI app that serves simulations (auto-scales to zero)
-- **Cache Updater**: Background job that fetches data from Spacescope (runs daily via GitHub Actions)
-- **Shared Volume**: 3GB persistent storage for DiskCache
+- **Single Machine**: FastAPI app running API service with built-in cache update capability
+- **Admin Endpoint**: `/admin/update-cache` for triggering cache updates externally
+- **Shared Volume**: 3GB persistent storage for DiskCache (attached to the single machine)
+- **GitHub Actions**: Daily trigger at 1:00 AM UTC that calls the admin endpoint
 
-**Cost**: ~$1-3/month (API scales to zero, cache runs 3-5 min/day)
+**Cost**: ~$1-5/month (machine scales to zero when idle, cache updates via HTTP)
+
+**Architecture**: Single machine solves the Fly.io volume limitation (volumes can only be attached to one machine at a time)
 
 ---
 
@@ -37,135 +40,95 @@ SPACESCOPE_TOKEN=Bearer ghp_...
 ### Step 1: Create App and Volume
 
 ```bash
-# Create cache updater app
-flyctl apps create mechafil-cache-updater
+# Create single app
+flyctl apps create mechafil-api
 
 # Create 3GB volume (enough for ~100-500MB cache)
-flyctl volumes create shared_cache --region fra --size 3 --app mechafil-cache-updater
+flyctl volumes create shared_cache --region fra --size 3 --app mechafil-api
 ```
 
-**Region choice**: `fra` = Frankfurt. Change if needed, but both services must use the same region.
+**Region choice**: `fra` = Frankfurt. Change if needed.
 
 ### Step 2: Set Spacescope Token Secret
 
 ```bash
 # Remove quotes from token value!
-flyctl secrets set SPACESCOPE_TOKEN='Bearer YOUR_TOKEN_HERE' --app mechafil-cache-updater
+flyctl secrets set SPACESCOPE_TOKEN='Bearer YOUR_TOKEN_HERE' --app mechafil-api
 ```
 
 **Critical**: The token value should NOT have quotes around it.
 
-### Step 3: Deploy Cache Updater (Initial Population)
+### Step 3: Deploy the Application
 
 ```bash
-# Deploy to build image and run first cache update
-flyctl deploy --config fly-cache-updater.toml --app mechafil-cache-updater
+# Deploy the single machine with both API and cache updater code
+flyctl deploy --app mechafil-api
 
-# Monitor logs (takes 2-3 minutes to fetch from Spacescope)
-flyctl logs --app mechafil-cache-updater
+# Monitor the deployment
+flyctl logs --app mechafil-api
 ```
-
-**Look for**: `"✅ Cache update completed successfully!"`
 
 **What happened**:
 - Built Docker image with Python, Poetry, JAX, dependencies (~1-2GB)
-- Fetched historical data from Spacescope API
-- Wrote cache to `/data/shared-cache` volume
-- Machine is now running continuously (we'll stop it next)
+- Deployed single machine with FastAPI application
+- Volume attached to this machine
+- Admin endpoint `/admin/update-cache` now available
 
-### Step 4: Configure for One-Shot Runs
+### Step 4: Initial Cache Population
 
 ```bash
-# Get machine ID
-flyctl machine list --app mechafil-cache-updater
-# Copy the ID (e.g., d8d3dd6c2ed1d8)
+# Trigger the first cache update via admin endpoint
+curl -X POST https://mechafil-api.fly.dev/admin/update-cache \
+  -H "Content-Type: application/json" \
+  -v
 
-# Update machine to exit after cache update
-flyctl machine update <MACHINE_ID> \
-  --app mechafil-cache-updater \
-  --command "python -m services.cache_updater.main --once" \
-  --yes
-
-# Stop the machine (GitHub Actions will start it daily)
-flyctl machine stop <MACHINE_ID> --app mechafil-cache-updater
+# This takes ~40 seconds
+# Look for: {"status":"success","message":"Cache updated and historical data reloaded"}
 ```
 
 **What this does**:
-- Machine now runs with `--once` flag (exits after updating)
-- Stopped machine costs $0
-- GitHub Actions will start it daily
+- Wakes up the machine if stopped
+- Calls cache updater logic (fetches from Spacescope API)
+- Writes cache to `/data/shared-cache` volume
+- Reloads historical data in the API
+- Returns success response
 
 ### Step 5: Set Up GitHub Actions Scheduling
 
-**5.1: Get Required Information**
-
-```bash
-# Get Fly API token
-flyctl auth token
-# Copy the entire token
-
-# Get machine ID (if you forgot)
-flyctl machine list --app mechafil-cache-updater
-# Copy the ID
-```
-
-**5.2: Add GitHub Secrets**
-
-1. Go to your GitHub repo: **Settings > Secrets and variables > Actions**
-2. Click **New repository secret**
-3. Add these two secrets:
-
-| Name | Value |
-|------|-------|
-| `FLY_API_TOKEN` | (paste token from `flyctl auth token`) |
-| `CACHE_MACHINE_ID` | (paste machine ID, e.g., `d8d3dd6c2ed1d8`) |
-
-**5.3: Ensure Workflow is in Main Branch**
+**5.1: Ensure Workflow is in Main Branch**
 
 The workflow file `.github/workflows/update-cache-daily.yml` must be in the `main` branch for scheduled runs:
 
 ```bash
 # If you're on a different branch
 git checkout main
-git checkout <your-branch> -- .github/workflows/update-cache-daily.yml
-git add .github/workflows/update-cache-daily.yml
-git commit -m "Add daily cache update workflow"
+git merge <your-branch>  # or cherry-pick the workflow file
 git push origin main
 ```
 
-**5.4: Test Workflow Manually**
+**5.2: No Secrets Required!**
+
+The new architecture doesn't require any GitHub secrets because:
+- The admin endpoint is publicly accessible (you can add auth later if needed)
+- GitHub Actions just sends an HTTP POST request
+
+**5.3: Test Workflow Manually**
 
 1. Go to **Actions** tab in GitHub
 2. Click **Daily Cache Update**
 3. Click **Run workflow** > Select `main` branch > **Run workflow**
-4. Watch it complete (~3-5 minutes)
+4. Watch it complete (~40-50 seconds)
 
 **What the workflow does**:
 - ⏰ Runs automatically daily at **1:00 AM UTC**
-- 🚀 Starts the stopped Fly.io machine
-- 📦 Machine updates cache from Spacescope
-- 🛑 Machine exits and stops automatically
-- 💰 Costs ~$0.01 per run
+- 📡 Sends POST request to `/admin/update-cache` endpoint
+- 🚀 Machine wakes up if stopped (auto-start)
+- 📦 Admin endpoint triggers cache update from Spacescope
+- ✅ Returns success/failure status
+- 💤 Machine idles and eventually stops (scale to zero)
+- 💰 Costs ~$0.01-0.02 per run
 
-### Step 6: Deploy API Service
-
-```bash
-# Create API app
-flyctl apps create mechafil-api
-
-# Deploy API
-flyctl deploy --config fly-api.toml --app mechafil-api
-```
-
-**What this does**:
-- Deploys FastAPI application
-- Mounts same `shared_cache` volume (read-only)
-- Configured to auto-scale to zero when idle
-- Auto-starts on incoming requests
-
-**Deployment takes**: 2-3 minutes
-
-### Step 7: Test Your API
+### Step 6: Test Your API
 
 ```bash
 # Health check
@@ -191,7 +154,10 @@ curl -X POST https://mechafil-api.fly.dev/simulate \
   }'
 ```
 
-**First request may take 2-3 seconds** (cold start from idle).
+**Cold start timing:**
+- Health check: ~15 seconds (machine start + JAX/FastAPI initialization)
+- First simulation: ~5-6 seconds (includes lazy loading of cache data)
+- Subsequent requests: <1 second (cache already in memory)
 
 ---
 
@@ -199,31 +165,43 @@ curl -X POST https://mechafil-api.fly.dev/simulate \
 
 ```
 GitHub Actions (1:00 AM UTC daily)
-         │
-         │ Start machine
-         ▼
-┌────────────────────┐
-│  Cache Updater     │
-│  - Fetches data    │──────► Spacescope API
-│  - Updates cache   │
-│  - Exits (stopped) │
-└─────────┬──────────┘
-          │ Write
-          ▼
-  ┌───────────────┐
-  │ Shared Volume │◄────────┐
-  │  (3GB cache)  │         │ Read
-  └───────┬───────┘         │
-          │                 │
-          └─────────────────┤
-                            │
-                   ┌────────┴─────────┐
-Internet Request──►│   API Service    │
-                   │  - Auto-start    │
-                   │  - Auto-stop     │
-                   │  - Reads cache   │
-                   └──────────────────┘
+         |
+         | POST /admin/update-cache
+         v
+┌────────────────────────────────────────┐
+│   Single Fly.io Machine                │
+│                                        │
+│   ┌──────────────────────┐             │
+│   │  FastAPI Service     │◄────────────┤ User HTTP requests
+│   │  (Port 8000)         │             │
+│   └──────┬───────────────┘             │
+│          │                             │
+│   ┌──────▼──────────────────┐          │
+│   │  /admin/update-cache    │          │
+│   │  (Admin Endpoint)       │          │
+│   └──────┬──────────────────┘          │
+│          │                             │
+│          v Triggers                     │
+│   ┌──────────────────────┐             │
+│   │  Cache Updater       │─────────────┤ Spacescope API
+│   │  (Python Module)     │             │
+│   └──────┬───────────────┘             │
+│          │                             │
+│          v Write/Read                   │
+│   ┌──────────────────────┐             │
+│   │  Volume              │             │
+│   │  /data/shared-cache  │             │
+│   │  (3GB persistent)    │             │
+│   └──────────────────────┘             │
+└────────────────────────────────────────┘
 ```
+
+**Key Benefits**:
+- ✅ **Volume sharing solved**: Single machine = volume attached
+- ✅ **External trigger**: GitHub Actions controls when updates happen
+- ✅ **True serverless**: Machine scales to zero when idle
+- ✅ **No downtime**: API stays available during cache updates
+- ✅ **Simple**: No multi-machine orchestration needed
 
 ---
 
@@ -234,11 +212,12 @@ Internet Request──►│   API Service    │
 ```bash
 # App status
 flyctl status --app mechafil-api
-flyctl status --app mechafil-cache-updater
 
 # Machine list
 flyctl machine list --app mechafil-api
-flyctl machine list --app mechafil-cache-updater
+
+# Check if machine is running or stopped
+flyctl machine status <MACHINE_ID> --app mechafil-api
 ```
 
 ### View Logs
@@ -246,7 +225,6 @@ flyctl machine list --app mechafil-cache-updater
 ```bash
 # Real-time logs
 flyctl logs --app mechafil-api --follow
-flyctl logs --app mechafil-cache-updater --follow
 
 # Recent logs only
 flyctl logs --app mechafil-api
@@ -257,23 +235,26 @@ flyctl logs --app mechafil-api
 Trigger cache update manually (without waiting for scheduled run):
 
 ```bash
-# Method 1: Via GitHub Actions
-# Go to Actions tab > Daily Cache Update > Run workflow
+# Method 1: Via Admin Endpoint (Recommended)
+curl -X POST https://mechafil-api.fly.dev/admin/update-cache \
+  -H "Content-Type: application/json" \
+  -v
 
-# Method 2: Via Fly CLI
-MACHINE_ID=<your-machine-id>
-flyctl machine start $MACHINE_ID --app mechafil-cache-updater
+# Method 2: Via GitHub Actions UI
+# Go to Actions tab > Daily Cache Update > Run workflow
 ```
 
-### SSH Into Machines
+### SSH Into Machine
 
 ```bash
-# API machine
+# SSH into the machine
 flyctl ssh console --app mechafil-api
 
-# Cache updater machine (must be running)
-flyctl machine start <MACHINE_ID> --app mechafil-cache-updater
-flyctl ssh console --app mechafil-cache-updater
+# Check cache contents
+python3 -c "from diskcache import Cache; c = Cache('/data/shared-cache'); print(list(c))"
+
+# Check cache directory size
+df -h /data/shared-cache
 ```
 
 ---
@@ -282,42 +263,33 @@ flyctl ssh console --app mechafil-cache-updater
 
 | Component | Usage | Cost/Month |
 |-----------|-------|------------|
-| **API** | ~100 req/day, scales to zero | ~$0-1 |
-| **Cache Updater** | 3-5 min/day (started by GitHub) | ~$0-1 |
+| **Single Machine** | Idles most of time, scales to zero | ~$0-2 |
+| **Cache Updates** | ~40 sec/day triggered by GitHub | ~$0-1 |
+| **API Requests** | ~100 req/day with cold starts | ~$0-2 |
 | **Volume** | 3GB persistent storage | ~$0.45 |
 | **GitHub Actions** | Free tier (2000 min/month) | $0 |
-| **Total** | | **~$1-3** |
+| **Total** | | **~$1-5** |
 
-**If high traffic (API always on)**: ~$15-25/month
+**If high traffic (machine always on)**: ~$15-20/month
 
 ---
 
 ## Updating Code
 
-### Update API
+### Update Application (API or Cache Updater)
 
 ```bash
-# Make code changes
-git commit -am "Update API"
+# Make code changes to API or cache updater
+git commit -am "Update application"
 
-# Deploy
+# Deploy (rebuilds image and updates machine)
 flyctl deploy --app mechafil-api
+
+# Test the changes
+curl https://mechafil-api.fly.dev/health
 ```
 
-### Update Cache Updater
-
-```bash
-# Make code changes
-git commit -am "Update cache updater"
-
-# Rebuild image
-flyctl deploy --config fly-cache-updater.toml --app mechafil-cache-updater
-
-# Get new machine ID (if machine was recreated)
-flyctl machine list --app mechafil-cache-updater
-
-# Update GitHub secret CACHE_MACHINE_ID if needed
-```
+**Note**: Both API and cache updater code are in the same image, so one deployment updates everything.
 
 ---
 
@@ -325,44 +297,62 @@ flyctl machine list --app mechafil-cache-updater
 
 ### API Returns "No cache data found"
 
-**Cause**: Cache updater hasn't populated cache yet.
+**Cause**: Cache hasn't been populated yet.
 
 **Fix**:
 ```bash
-# Check if cache updater ran successfully
-flyctl logs --app mechafil-cache-updater
+# Trigger cache update via admin endpoint
+curl -X POST https://mechafil-api.fly.dev/admin/update-cache -v
 
-# Manually trigger cache update
-flyctl machine start <MACHINE_ID> --app mechafil-cache-updater
-
-# Wait 3 minutes, then test API again
+# Wait ~40 seconds for it to complete
+# Then test API again
 curl https://mechafil-api.fly.dev/health
 ```
 
-### Spacescope API Errors (KeyError: 'data')
+### Admin Endpoint Timeout or Error
 
-**Cause**: Token has quotes around it or is invalid.
+**Cause**: Spacescope API issues or token problems.
 
 **Fix**:
 ```bash
-# Check .env file - remove quotes
-cat .env | grep SPACESCOPE_TOKEN
+# Check logs for errors
+flyctl logs --app mechafil-api
 
-# Update secret (no quotes!)
-flyctl secrets set SPACESCOPE_TOKEN='Bearer YOUR_TOKEN' --app mechafil-cache-updater
+# Verify secret is set correctly (no quotes!)
+flyctl secrets list --app mechafil-api
+
+# Update secret if needed
+flyctl secrets set SPACESCOPE_TOKEN='Bearer YOUR_TOKEN' --app mechafil-api
 
 # Restart machine
-flyctl machine restart <MACHINE_ID> --app mechafil-cache-updater
+flyctl machine restart <MACHINE_ID> --app mechafil-api
+```
+
+### Machine Won't Start Automatically
+
+**Cause**: `auto_start_machines` might be disabled.
+
+**Fix**:
+```bash
+# Check fly.toml - ensure it has:
+# [http_service]
+#   auto_start_machines = true
+#   auto_stop_machines = "stop"
+#   min_machines_running = 0
+
+# If you changed fly.toml, redeploy:
+flyctl deploy --app mechafil-api
 ```
 
 ### GitHub Action Fails
 
-**Cause**: Secrets not set correctly.
+**Cause**: Network timeout or admin endpoint error.
 
 **Fix**:
-1. Verify secrets exist: GitHub repo > Settings > Secrets and variables > Actions
-2. Ensure `FLY_API_TOKEN` and `CACHE_MACHINE_ID` are set
-3. Re-run workflow
+1. Check workflow logs in GitHub Actions
+2. Test admin endpoint manually: `curl -X POST https://mechafil-api.fly.dev/admin/update-cache -v`
+3. Check Fly.io logs: `flyctl logs --app mechafil-api`
+4. Re-run workflow in GitHub Actions UI
 
 ### Build Fails (Out of Memory)
 
@@ -376,45 +366,96 @@ flyctl deploy --remote-only --app mechafil-api
 
 **Check usage**:
 ```bash
-flyctl ssh console --app mechafil-cache-updater
+flyctl ssh console --app mechafil-api
 df -h /data/shared-cache
 exit
 ```
 
 **Expand if needed**:
 ```bash
-flyctl volumes list
+flyctl volumes list --app mechafil-api
 flyctl volumes extend vol_xxxxx --size 5
 ```
+
+---
+
+## Security Considerations
+
+### Protecting the Admin Endpoint (Optional)
+
+The `/admin/update-cache` endpoint is currently public. For production, consider adding authentication:
+
+**Option 1: API Key in Header**
+
+Add to `services/api/main.py`:
+```python
+@app.post("/admin/update-cache")
+async def update_cache(api_key: str = Header(None)):
+    if api_key != os.getenv("ADMIN_API_KEY"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    # ... rest of code
+```
+
+Then set secret:
+```bash
+flyctl secrets set ADMIN_API_KEY='your-secret-key' --app mechafil-api
+```
+
+Update GitHub Actions workflow:
+```yaml
+- name: Trigger Cache Update
+  run: |
+    curl -X POST https://mechafil-api.fly.dev/admin/update-cache \
+      -H "Content-Type: application/json" \
+      -H "api-key: ${{ secrets.ADMIN_API_KEY }}" \
+      -f -v
+```
+
+**Option 2: Keep Public**
+
+For low-value/internal services, keeping it public is acceptable because:
+- Cache updates are idempotent (safe to call multiple times)
+- Not destructive operation
+- Worst case: extra Spacescope API calls and compute time
 
 ---
 
 ## Important Notes
 
 1. ✅ **Token format critical**: No quotes in `.env` or Fly secrets
-2. ✅ **Region must match**: All resources in same region (fra)
-3. ✅ **Workflow in main**: GitHub Actions only runs from default branch
-4. ✅ **Machine ID in secrets**: Update if machine is recreated
+2. ✅ **Single machine architecture**: Solves Fly.io volume sharing limitation
+3. ✅ **Admin endpoint**: Cache updates triggered via HTTP POST
+4. ✅ **Workflow in main**: GitHub Actions only runs from default branch
 5. ✅ **Cache updates daily**: 1:00 AM UTC via GitHub Actions
-6. ✅ **API auto-scales**: Stops after ~5 min idle, starts on request
-7. ✅ **Cold start**: First request takes 2-3 seconds
+6. ✅ **Machine auto-scales**: Stops after idle period, starts on request
+7. ✅ **Cold start**: Health check passes in ~15 seconds (JAX import takes time)
+8. ✅ **Lazy loading**: Cache loads on first request (not at startup) for faster boot
+9. ✅ **Cache update time**: ~40 seconds to fetch from Spacescope and reload
 
 ---
 
 ## Summary
 
 **What you deployed**:
-- ✅ Cache updater (stopped, triggered daily by GitHub Actions)
-- ✅ API service (serverless, auto-scales to zero)
-- ✅ Shared volume (3GB persistent cache storage)
-- ✅ GitHub Actions workflow (daily at 1:00 AM UTC)
+- ✅ Single machine running FastAPI with admin endpoint
+- ✅ Volume attached to machine for persistent cache
+- ✅ GitHub Actions workflow triggering daily cache updates via HTTP
+- ✅ Serverless configuration (auto-start, auto-stop, min=0)
 
 **Your endpoints**:
 - https://mechafil-api.fly.dev/health
 - https://mechafil-api.fly.dev/historical-data
 - https://mechafil-api.fly.dev/simulate
 - https://mechafil-api.fly.dev/docs
+- https://mechafil-api.fly.dev/admin/update-cache (admin endpoint)
 
-**Monthly cost**: ~$1-3
+**Monthly cost**: ~$1-5
 
-**Next steps**: See `FLY_DEPLOYMENT_LOG.md` for detailed explanations and advanced topics.
+**Architecture advantages**:
+- Simple single-machine deployment
+- Solves Fly.io volume attachment limitation
+- Externally triggered cache updates
+- True serverless with auto-scaling
+- No complex machine orchestration
+
+**Next steps**: See `ARCHITECTURE.md` for detailed architecture explanation and alternative approaches considered.
