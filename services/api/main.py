@@ -229,7 +229,7 @@ async def get_historical_data_full():
         )
 
         # Downsample to Mondays
-        results = results.downsample_mondays(start_date)
+        #results = results.downsample_mondays(start_date)
 
         return results.to_dict()
 

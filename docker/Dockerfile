@@ -19,6 +19,9 @@ COPY pyproject.toml poetry.lock* README.md ./
 COPY shared/ ./shared/
 COPY services/ ./services/
 
+# Copy documentation (built HTML files)
+COPY docs/build/html/ ./services/docs/build/html/
+
 # Configure Poetry: Don't create virtual environment, install dependencies
 RUN poetry config virtualenvs.create false \
     && poetry install --only=main --no-interaction --no-ansi
