@@ -31,7 +31,8 @@ class Settings:
     SHARED_CACHE_DIR: Path = Path(os.getenv("SHARED_CACHE_DIR", "/data/shared-cache"))
     
     # Data constants and defaults
-    STARTUP_DATE: date = date(2020, 10, 16)
+    #STARTUP_DATE: date = date(2020, 10, 16)
+    STARTUP_DATE: date = date(2022, 10, 10)
     WINDOW_DAYS: int = 3650  # 10 years forecast
     MAX_HISTORICAL_DATA_FETCHING_RETRIES: int = 5
     
