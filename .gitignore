@@ -39,11 +39,15 @@ mechafil-server/data/*.pkl
 mechafil-server/data/*.json
 !mechafil-server/data/.gitkeep
 
+# Shared cache directory (local development cache)
+shared-cache/
+!shared-cache/.gitkeep
+
 # Auth/secrets (example paths)
 auths/*.json
 *.token
 
-# Data & test
+# Data & test files
 .cache/
 cache_directory
 .claude
@@ -51,5 +55,17 @@ test/
 clean_data.sh
 selected_results.json
 api_results.json
-data
+data.txt
+data/
 local-tests
+
+# Poetry and dependency management
+poetry.lock
+
+# Documentation build artifacts
+docs/build/
+docs/source/_build/
+
+# IDE and editor files
+*.code-workspace
+.vscode/settings.json
