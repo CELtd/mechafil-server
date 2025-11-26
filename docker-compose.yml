@@ -1,0 +1,66 @@
+# =============================================================================
+# Mechafil Microservices - Serverless Docker Compose
+# =============================================================================
+#
+# Usage patterns:
+# 
+# 1. SERVERLESS (Recommended):
+#    - Cache always on:     docker-compose up cache-updater -d
+#    - Server on-demand:    docker-compose up api
+#    - Stop server:         docker-compose stop api
+#
+# 2. DEVELOPMENT:
+#    - Both together:       docker-compose up
+#
+# 3. LAMBDA-LIKE CACHE UPDATE:
+#    - Run once and exit:   docker-compose run --rm --entrypoint="" cache-updater python -m services.cache_updater.main --once
+#
+# =============================================================================
+
+services:
+  # =========================================================================== 
+  # CACHE UPDATER - Always On Service
+  # ===========================================================================
+  cache-updater:
+    build: 
+      context: .
+      dockerfile: docker/cache-updater.Dockerfile
+    container_name: mechafil-cache-updater
+    volumes:
+      - shared_cache:/data/shared-cache
+    environment:
+      - SHARED_CACHE_DIR=/data/shared-cache
+      - LOG_LEVEL=INFO
+      - RELOAD_TEST_MODE=true  # Fast refresh for testing (2 minutes)
+      - RELOAD_TRIGGER=01:00   # Daily refresh at 1:00 UTC
+      # Spacescope auth - set in your .env file
+      - SPACESCOPE_TOKEN=${SPACESCOPE_TOKEN:-}
+      - SPACESCOPE_AUTH_FILE=${SPACESCOPE_AUTH_FILE:-}
+    env_file:
+      - .env
+    restart: unless-stopped
+    # Always keep cache updater running
+    profiles: ["cache", "full"]
+
+  # ===========================================================================
+  # MECHAFIL API SERVER - On-Demand Service  
+  # ===========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: mechafil-api
+    volumes:
+      - shared_cache:/data/shared-cache
+    ports:
+      - "8000:8000"
+    environment:
+      - USE_SHARED_CACHE=true
+      - SHARED_CACHE_DIR=/data/shared-cache
+    # Note: No 'depends_on' to allow independent startup
+    # Note: No 'restart' policy - this should be on-demand
+    profiles: ["api", "full"]
+
+volumes:
+  shared_cache:
+    driver: local

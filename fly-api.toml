@@ -1,0 +1,37 @@
+# Fly.io Configuration for MechaFil API Service
+# This service handles incoming HTTP requests and runs simulations
+# It scales to zero when idle and auto-starts on incoming requests
+
+app = "mechafil-api"
+primary_region = "fra"  # Frankfurt - change to your preferred region
+
+# Build configuration - uses existing Docker image
+[build]
+  dockerfile = "docker/api.Dockerfile"
+
+# Environment variables available to the container
+[env]
+  USE_SHARED_CACHE = "true"                    # Enable shared cache mode
+  SHARED_CACHE_DIR = "/data/shared-cache"      # Cache mount point
+  HOST = "0.0.0.0"                             # Listen on all interfaces
+  PORT = "8000"                                # Internal port for FastAPI
+
+# HTTP service configuration - this is what makes it serverless
+[http_service]
+  internal_port = 8000                         # Port FastAPI listens on
+  force_https = true                           # Redirect HTTP to HTTPS
+  auto_stop_machines = "stop"                  # Stop machines when idle (scale to 0)
+  auto_start_machines = true                   # Auto-start on incoming request
+  min_machines_running = 0                     # Minimum instances (0 = true serverless)
+  processes = ["app"]                          # Which process group to scale
+
+# Volume mount - persistent storage shared with cache updater
+[mounts]
+  source = "shared_cache"                      # Volume name (must match volume creation)
+  destination = "/data/shared-cache"           # Where volume is mounted in container
+
+# VM resources - adjust based on your needs
+[[vm]]
+  memory = "2gb"                               # RAM allocation
+  cpu_kind = "shared"                          # shared = cheaper, performance = faster
+  cpus = 2                                     # Number of CPUs

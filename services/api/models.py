@@ -44,13 +44,13 @@ class SimulationRequest(BaseModel):
         default=None, description="FIL+ rate (0..1), constant or array"
     )
     lock_target: Optional[Union[float, List[float]]] = Field(
-        default=None, description="Target lock ratio (e.g., 0.3), float or array"
+        default=0.3, description="Target lock ratio (e.g., 0.3), float or array"
     )
     forecast_length_days: Optional[int] = Field(
         default=None, description="Forecast length in days"
     )
     sector_duration_days: Optional[int] = Field(
-        default=None, description="Average sector duration in days"
+        default=540, description="Average sector duration in days"
     )
     output: Optional[Union[str, List[str]]] = Field(
         default=None, description="Specific output field(s) to return. If not specified, returns all fields."

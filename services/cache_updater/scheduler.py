@@ -9,7 +9,7 @@ from .config import settings
 logger = logging.getLogger(__name__)
 
 
-class DataRefreshScheduler:
+class CacheUpdateScheduler:
     """Scheduler for daily data refresh at a specific time."""
     
     def __init__(self, refresh_callback: Callable[[], None]):
@@ -48,7 +48,7 @@ class DataRefreshScheduler:
         Returns:
             Number of seconds until the next refresh time
         """
-        # Test mode: refresh every 2 minutes
+        # Test mode: refresh every 2 minutes for testing
         if settings.RELOAD_TEST_MODE:
             return 120.0
             
@@ -68,7 +68,7 @@ class DataRefreshScheduler:
     async def _schedule_loop(self):
         """Main scheduling loop that runs in the background."""
         if settings.RELOAD_TEST_MODE:
-            logger.info("Data refresh scheduler started in TEST MODE. Refreshing every 2 minutes")
+            logger.info("Cache update scheduler started in TEST MODE. Refreshing every 2 minutes")
         else:
             logger.info(f"Data refresh scheduler started. Next refresh at {settings.RELOAD_TRIGGER} UTC")
         

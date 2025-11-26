@@ -83,13 +83,14 @@ class Data:
         current_date = date.today() - timedelta(days=1)
         start_date = settings.STARTUP_DATE
     
-        # Load cache object
-        cache = Cache(settings.CACHE_DIR)
+        # Load cache object using shared directory
+        cache = Cache(settings.SHARED_CACHE_DIR)
 
         attempt = 0
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
-            cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+            # Use fixed cache key to always overwrite the same entry
+            cache_key = "offline_data_latest"
             cached_result = cache.get(cache_key)
 
             if cached_result is not None:
@@ -143,7 +144,7 @@ class Data:
                 else:
                     current_date -= timedelta(days=1)
                     logger.info(f"Retrying... with new current_date={current_date}")
- 
+
             
     def refresh_historical_data(self) -> None:
         """Refresh historical data by clearing cache and reloading.
@@ -155,12 +156,13 @@ class Data:
         
         current_date = date.today() - timedelta(days=1)
         start_date = settings.STARTUP_DATE
-        cache = Cache(settings.CACHE_DIR)
+        cache = Cache(settings.SHARED_CACHE_DIR)
     
         attempt = 0
         while attempt < settings.MAX_HISTORICAL_DATA_FETCHING_RETRIES:
             end_date = current_date + timedelta(days=settings.WINDOW_DAYS)
-            cache_key = f"offline_data_{start_date}{current_date}{end_date}"
+            # Use fixed cache key to always overwrite the same entry
+            cache_key = "offline_data_latest"
     
             # Clear relevant cache entry before fetching
             if cache_key in cache:
@@ -264,57 +266,8 @@ class Data:
         }
 
 
-    def trim_data_for_simulation(self, forecast_length: int) -> Dict[str, Any]:
-        """Trim simulation data vectors to match the forecast time horizon.
-        
-        This method adjusts the data vectors to align with simulation requirements:
-        - Expire vectors are limited to the forecast period only
-        - Pledge release vector spans both historical + forecast periods
-        
-        The trimming ensures that:
-        1. `rb_known_scheduled_expire_vec` and `qa_known_scheduled_expire_vec`
-           contain only future expiration data (forecast period)
-        2. `known_scheduled_pledge_release_full_vec` contains historical +
-           forecast pledge release data (full simulation period)
-           
-        Args:
-            forecast_length: Number of days to forecast into the future
-            
-        Returns:
-            Dict containing trimmed simulation data with proper vector sizes
-            
-        Raises:
-            ValueError: If historical_data is not loaded or forecast_length is invalid
-        """
-        if not self.historical_data:
-            raise ValueError("Historical data must be loaded before trimming")
-            
-        if forecast_length <= 0:
-            raise ValueError(f"forecast_length must be positive, got {forecast_length}")
-            
-        if not self.start_date or not self.current_date:
-            raise ValueError("Start date and current date must be set")
-
-        hist_data = self.historical_data['offline_data']
-        new_data = hist_data.copy()
-        
-        # Calculate the historical period length
-        historical_days = int((self.current_date - self.start_date).days)
-        pledge_release_length = historical_days + forecast_length
-        
-        # Trim expire vectors to forecast period only
-        #new_data['rb_known_scheduled_expire_vec'] = hist_data['rb_known_scheduled_expire_vec'][historical_days:historical_days+forecast_length]
-        #new_data['qa_known_scheduled_expire_vec'] = hist_data['qa_known_scheduled_expire_vec'][historical_days:historical_days+forecast_length]
-        new_data['rb_known_scheduled_expire_vec'] = hist_data['rb_known_scheduled_expire_vec'][:forecast_length]
-        new_data['qa_known_scheduled_expire_vec'] = hist_data['qa_known_scheduled_expire_vec'][:forecast_length]
-        
-        # Trim pledge release vector to historical + forecast period
-        new_data['known_scheduled_pledge_release_full_vec'] = hist_data['known_scheduled_pledge_release_full_vec'][:pledge_release_length]
-
-        return new_data
-
 # ------------------------------------------------------------------
-# Utility functions
+# Utility functions (copied from mechafil-server)
 # ------------------------------------------------------------------
 
 PIB = 2**50

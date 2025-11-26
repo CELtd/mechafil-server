@@ -1,0 +1,37 @@
+# Fly.io Configuration for MechaFil Server
+# Single machine running API service with admin endpoint for cache updates
+
+app = "mechafil-api"
+primary_region = "fra"
+
+# Build configuration - unified image with both API and cache-updater code
+[build]
+  dockerfile = "docker/Dockerfile"
+
+# Environment variables
+[env]
+  USE_SHARED_CACHE = "true"
+  SHARED_CACHE_DIR = "/data/shared-cache"
+  HOST = "0.0.0.0"
+  PORT = "8000"
+
+# Volume mount - persistent storage for cache
+[mounts]
+  source = "shared_cache"
+  destination = "/data/shared-cache"
+
+# HTTP service configuration - serverless API
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"  # Scale to zero when idle
+  auto_start_machines = true   # Start on incoming request
+  min_machines_running = 0     # True serverless
+
+  # No health checks - allows faster auto-stop when idle
+
+# VM configuration - single machine type
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2

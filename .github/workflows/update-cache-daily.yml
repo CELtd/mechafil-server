@@ -10,16 +10,14 @@ jobs:
   update-cache:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Run Cache Update (One-Shot)
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Trigger Cache Update via Admin Endpoint
         run: |
-          # Start the stopped machine (it's configured to run --once)
-          flyctl machine start ${{ secrets.CACHE_MACHINE_ID }} --app mechafil-cache-updater
+          # Call the admin endpoint to trigger cache update
+          # This will wake up the machine if it's stopped, run the update, then let it idle again
+          curl -X POST https://mechafil-api.fly.dev/admin/update-cache \
+            -H "Content-Type: application/json" \
+            -f -v
 
-          # Wait for it to complete (optional - monitors exit)
-          sleep 10
-          flyctl machine wait ${{ secrets.CACHE_MACHINE_ID }} --app mechafil-cache-updater --state stopped
+      - name: Check Response
+        run: |
+          echo "Cache update completed successfully!"

@@ -27,7 +27,6 @@ from .models import (
 )
 from .data import Data
 from .config import settings
-from .scheduler import DataRefreshScheduler
 from .results import SimulationResults, FetchDataResults
 
 # Load environment variables from common locations
@@ -49,49 +48,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global data handler and scheduler
+# Global data handler
 loaded_data: Data | None = None
-data_scheduler: DataRefreshScheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application startup and shutdown."""
-    global loaded_data, data_scheduler
+    global loaded_data
 
     # Startup
     logger.info("Starting up Mechafil Server...")
     logger.info(f"JAX backend: {jax.lib.xla_bridge.get_backend().platform}")
     logger.info(f"JAX devices: {jax.devices()}")
 
-    try:
-        loaded_data = Data()
-        loaded_data.load_historical_data()
-        logger.info("Historical data loaded successfully")
-        
-        # Start the data refresh scheduler
-        data_scheduler = DataRefreshScheduler(loaded_data.refresh_historical_data)
-        data_scheduler.start()
-        logger.info(f"Data refresh scheduler started. Daily refresh at {settings.RELOAD_TRIGGER} UTC")
-        
-    except Exception as e:
-        logger.error(f"Failed to load historical data on startup: {e}")
-        logger.warning("Server will continue without historical data")
+    # Initialize Data object but don't load cache yet (lazy loading for faster startup)
+    loaded_data = Data()
+    logger.info("Server started. Historical data will be loaded on first request.")
 
     yield
 
     # Shutdown
     logger.info("Shutting down Mechafil Server...")
-    if data_scheduler:
-        try:
-            await data_scheduler.stop_async()
-        except Exception as e:
-            logger.warning(f"Error stopping scheduler: {e}")
-            # Fallback to sync stop
-            try:
-                data_scheduler.stop()
-            except Exception as e2:
-                logger.warning(f"Error with fallback stop: {e2}")
 
 
 # Create FastAPI app
@@ -145,16 +123,76 @@ async def root():
     else:
         return RedirectResponse(url="/docs")
 
+@app.post("/admin/update-cache", tags=["Admin"])
+async def update_cache():
+    """
+    Admin endpoint to trigger cache update from external source.
+
+    This endpoint should be called by GitHub Actions or other trusted external triggers
+    to update the shared cache with latest data from Spacescope.
+
+    Returns:
+        Status message indicating whether cache update was successful
+    """
+    global loaded_data
+
+    logger.info("Admin endpoint: Cache update triggered")
+
+    try:
+        # Import cache updater logic
+        from services.cache_updater.main import run_once
+        import asyncio
+
+        # Run the cache update (it's an async function)
+        logger.info("Starting cache update...")
+        exit_code = await run_once()
+
+        if exit_code != 0:
+            raise RuntimeError("Cache update returned non-zero exit code")
+
+        logger.info("Cache update completed successfully")
+
+        # Reload data in the API service
+        if loaded_data is None:
+            loaded_data = Data()
+
+        logger.info("Reloading historical data from updated cache...")
+        loaded_data.load_historical_data()
+        logger.info("Historical data reloaded successfully")
+
+        return {
+            "status": "success",
+            "message": "Cache updated and historical data reloaded",
+            "timestamp": date.today().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Cache update failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Cache update failed: {str(e)}",
+        )
+
+
 @app.get("/historical-data", tags=["Data"])
 async def get_historical_data_full():
     """Get historical data downsampled to Mondays for visualization."""
     global loaded_data
 
-    if loaded_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Data handler not initialized",
-        )
+    # Lazy load: if data not loaded yet, load it now
+    if loaded_data is None or loaded_data.historical_data is None:
+        logger.info("Lazy loading historical data on first request...")
+        try:
+            if loaded_data is None:
+                loaded_data = Data()
+            loaded_data.load_historical_data()
+            logger.info("Historical data loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to load historical data: {str(e)}"
+            )
 
     try:
         logger.info("Getting historical data (downsampled to Mondays)...")
@@ -212,12 +250,12 @@ async def simulate(req: SimulationRequest):
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "lock_target": 0.3}'
-      
+
       # Get only specific output field
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "output": "available_supply"}'
-      
+
       # Get multiple specific output fields
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
@@ -225,11 +263,20 @@ async def simulate(req: SimulationRequest):
     """
     global loaded_data
 
+    # Lazy load: if data not loaded yet, load it now
     if loaded_data is None or loaded_data.historical_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Historical data not loaded yet; try again shortly"
-        )
+        logger.info("Lazy loading historical data on first request...")
+        try:
+            if loaded_data is None:
+                loaded_data = Data()
+            loaded_data.load_historical_data()
+            logger.info("Historical data loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to load historical data: {str(e)}"
+            )
 
     # Get full simulation results first
     try:
@@ -306,12 +353,12 @@ async def simulatefull(req: SimulationRequest):
       curl -X POST http://localhost:8000/simulate/full \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "lock_target": 0.3}'
-      
+
       # Get only specific output field
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
         -d '{"forecast_length_days": 365, "output": "available_supply"}'
-      
+
       # Get multiple specific output fields
       curl -X POST http://localhost:8000/simulate \
         -H 'Content-Type: application/json' \
@@ -319,11 +366,20 @@ async def simulatefull(req: SimulationRequest):
     """
     global loaded_data
 
+    # Lazy load: if data not loaded yet, load it now
     if loaded_data is None or loaded_data.historical_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Historical data not loaded yet; try again shortly"
-        )
+        logger.info("Lazy loading historical data on first request...")
+        try:
+            if loaded_data is None:
+                loaded_data = Data()
+            loaded_data.load_historical_data()
+            logger.info("Historical data loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to load historical data: {str(e)}"
+            )
 
     # Get full simulation results first
     try:
@@ -395,7 +451,7 @@ def main():
     logger.info(f"Starting server on {host}:{port}")
 
     uvicorn.run(
-        "mechafil_server.main:app",
+        "services.api.main:app",
         host=host,
         port=port,
         reload=reload,
