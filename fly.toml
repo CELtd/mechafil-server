@@ -1,7 +1,7 @@
 # Fly.io Configuration for MechaFil Server
 # Single machine running API service with admin endpoint for cache updates
 
-app = "mechafil-api"
+app = "econolens-mechafil-server-api"
 primary_region = "fra"
 
 # Build configuration - unified image with both API and cache-updater code

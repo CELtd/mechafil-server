@@ -34,6 +34,8 @@ class Settings:
     #STARTUP_DATE: date = date(2020, 10, 16)
     STARTUP_DATE: date = date(2022, 10, 10)
     WINDOW_DAYS: int = 3650  # 10 years forecast
+    LOCK_TARGET: float = float(os.getenv("LOCK_TARGET", "0.3"))
+    SECTOR_DURATION_DAYS: int = int(os.getenv("SECTOR_DURATION_DAYS", "540"))
     MAX_HISTORICAL_DATA_FETCHING_RETRIES: int = 5
     
     # Cache updater specific settings
