@@ -2,8 +2,8 @@ name: Daily Cache Update
 
 on:
   schedule:
-    # Run daily at 1:00 AM UTC
-    - cron: '0 1 * * *'
+    # Run daily at 9:00 PM UTC
+    - cron: '0 21 * * *'
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
