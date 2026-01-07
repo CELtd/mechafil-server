@@ -60,17 +60,17 @@ class SimulationResults:
         start_date,
         current_date,
         forecast_len,
-        smoothed_rbp,
-        smoothed_rr,
-        smoothed_fpr
+        rbp_value,
+        rr_value,
+        fpr_value
     ) -> "SimulationResults":
         historical_days = (current_date - start_date).days if hasattr(current_date, "__sub__") else None
         input_data = {
             "current date": current_date.strftime("%Y-%m-%d") if hasattr(current_date, "strftime") else current_date,
             "forecast_length_days": forecast_len,
-            "raw_byte_power": round(float(smoothed_rbp), 6),
-            "renewal_rate": round(float(smoothed_rr), 6),
-            "filplus_rate": round(float(smoothed_fpr), 6),
+            "raw_byte_power": _summarize_input_value(rbp_value),
+            "renewal_rate": _summarize_input_value(rr_value),
+            "filplus_rate": _summarize_input_value(fpr_value),
         }
         simulation_output = {}
         for k, v in raw_results.items():
@@ -230,13 +230,20 @@ class FetchDataResults:
         offline_data: Dict[str, Any],
         smoothed_rbp: float,
         smoothed_rr: float,
-        smoothed_fpr: float
+        smoothed_fpr: float,
+        metadata: Dict[str, Any] | None = None
     ) -> "FetchDataResults":
         """
         Build FetchDataResults from the raw historical arrays,
         offline data, and smoothed metrics.
         """
         combined_data = {}
+        if metadata:
+            for key, value in metadata.items():
+                if isinstance(value, date):
+                    combined_data[key] = value.isoformat()
+                else:
+                    combined_data[key] = value
         # Smoothed metrics -> represent as "averaged over previous 30 days"
         combined_data["raw_byte_power_averaged_over_previous_30days"] = round(float(smoothed_rbp), 6)
         combined_data["renewal_rate_averaged_over_previous_30days"] = round(float(smoothed_rr), 6)
@@ -260,9 +267,36 @@ class FetchDataResults:
             else:
                 combined_data[k] = v
 
+        # Field aliases for clarity (keep originals to avoid breaking consumers)
+        if "raw_byte_power" in combined_data:
+            combined_data["raw_byte_power_onboarded_eib_per_day"] = combined_data["raw_byte_power"]
+        if "historical_raw_power_eib" in combined_data:
+            combined_data["network_raw_power_eib"] = combined_data["historical_raw_power_eib"]
+        if "historical_qa_power_eib" in combined_data:
+            combined_data["network_qa_power_eib"] = combined_data["historical_qa_power_eib"]
+
+        # Lightweight field metadata to disambiguate flows vs stocks
+        combined_data["field_meta"] = {
+            "raw_byte_power": {"type": "flow", "unit": "EiB/day", "meaning": "onboarding rate"},
+            "raw_byte_power_onboarded_eib_per_day": {"type": "flow", "unit": "EiB/day", "meaning": "onboarding rate"},
+            "renewal_rate": {"type": "rate", "unit": "fraction", "meaning": "renewal rate"},
+            "filplus_rate": {"type": "rate", "unit": "fraction", "meaning": "FIL+ share of onboarding"},
+            "historical_raw_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network RBP"},
+            "historical_qa_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network QAP"},
+            "network_raw_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network RBP"},
+            "network_qa_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network QAP"},
+            "raw_byte_power_averaged_over_previous_30days": {"type": "flow", "unit": "EiB/day", "meaning": "median onboarding rate"},
+            "renewal_rate_averaged_over_previous_30days": {"type": "rate", "unit": "fraction", "meaning": "median renewal rate"},
+            "filplus_rate_averaged_over_previous_30days": {"type": "rate", "unit": "fraction", "meaning": "median FIL+ rate"},
+        }
+
         return cls(data=combined_data)
 
-    def downsample_mondays(self, start_date: date) -> "FetchDataResults":
+    def downsample_mondays(
+        self,
+        start_date: date,
+        start_date_by_key: Dict[str, date] | None = None
+    ) -> "FetchDataResults":
         """
         Return a new FetchDataResults object with arrays downsampled to Mondays.
 
@@ -283,7 +317,8 @@ class FetchDataResults:
         downsampled = {}
         for k, v in self.data.items():
             if isinstance(v, list) and len(v) > 1:
-                downsampled[k] = select_mondays(v, start_date)
+                key_start = start_date_by_key.get(k, start_date) if start_date_by_key else start_date
+                downsampled[k] = select_mondays(v, key_start)
             else:
                 # Keep scalars and single-element arrays unchanged
                 downsampled[k] = v
@@ -308,3 +343,19 @@ class FetchDataResults:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict (for JSON responses)."""
         return {"data": self.data}
+
+
+def _summarize_input_value(value: Any) -> Any:
+    if isinstance(value, (list, np.ndarray)):
+        seq = value.tolist() if isinstance(value, np.ndarray) else value
+        if not seq:
+            return {"type": "array", "length": 0}
+        return {
+            "type": "array",
+            "length": len(seq),
+            "first": round(float(seq[0]), 6),
+            "last": round(float(seq[-1]), 6),
+        }
+    if isinstance(value, (int, float)):
+        return round(float(value), 6)
+    return value

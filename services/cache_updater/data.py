@@ -52,13 +52,30 @@ class Data:
 
         offline_data = get_simulation_data(bearer_or_file, start_date, current_date, end_date)
 
-        _, hist_rbp = get_historical_daily_onboarded_power(current_date - timedelta(days=180), current_date)
-        _, hist_rr = get_historical_renewal_rate(current_date - timedelta(days=180), current_date)
-        _, hist_fpr = get_historical_filplus_rate(current_date - timedelta(days=180), current_date)
+        t_rbp, hist_rbp = get_historical_daily_onboarded_power(start_date, current_date)
+        t_rr, hist_rr = get_historical_renewal_rate(start_date, current_date)
+        t_fpr, hist_fpr = get_historical_filplus_rate(start_date, current_date)
 
         smoothed_rbp = float(np.median(hist_rbp[-30:]))
         smoothed_rr = float(np.median(hist_rr[-30:]))
         smoothed_fpr = float(np.median(hist_fpr[-30:]))
+
+        def _normalize_ts(ts):
+            if isinstance(ts, pd.Timestamp):
+                if ts.tzinfo is not None:
+                    return ts.tz_convert(None)
+                return ts
+            return pd.Timestamp(ts).tz_localize(None)
+
+        t_rbp_0 = _normalize_ts(t_rbp.iloc[0])
+        t_rr_0 = _normalize_ts(t_rr.iloc[0])
+        t_fpr_0 = _normalize_ts(t_fpr.iloc[0])
+        t_rbp_last = _normalize_ts(t_rbp.iloc[-1])
+        t_rr_last = _normalize_ts(t_rr.iloc[-1])
+        t_fpr_last = _normalize_ts(t_fpr.iloc[-1])
+
+        hist_start_date = min(t_rbp_0, t_rr_0, t_fpr_0).date()
+        hist_end_date = max(t_rbp_last, t_rr_last, t_fpr_last).date()
 
         return {
             "offline_data": offline_data,
@@ -68,6 +85,10 @@ class Data:
             "smoothed_rbp": smoothed_rbp,
             "smoothed_rr": smoothed_rr,
             "smoothed_fpr": smoothed_fpr,
+            "data_start_date": start_date.isoformat(),
+            "data_end_date": current_date.isoformat(),
+            "hist_window_start_date": hist_start_date.isoformat(),
+            "hist_window_end_date": hist_end_date.isoformat(),
         }
 
     # ------------------------------------------------------------------
@@ -81,6 +102,8 @@ class Data:
     
         # Setup initial dates
         current_date = date.today() - timedelta(days=1)
+        if current_date > date.today():
+            current_date = date.today()
         start_date = settings.STARTUP_DATE
     
         # Load cache object using shared directory
@@ -98,8 +121,8 @@ class Data:
                 try:
                     # Save into self fields
                     self.historical_data = cached_result
-                    self.start_date = start_date
-                    self.current_date = current_date
+                    self.start_date = _parse_cached_date(cached_result.get("data_start_date")) or start_date
+                    self.current_date = _parse_cached_date(cached_result.get("data_end_date")) or current_date
                     self.smoothed_hist_rbp = cached_result["smoothed_rbp"]
                     self.smoothed_hist_rr = cached_result["smoothed_rr"]
                     self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
@@ -118,8 +141,8 @@ class Data:
 
                 # Save into self fields
                 self.historical_data = data_dict
-                self.start_date = start_date
-                self.current_date = current_date
+                self.start_date = _parse_cached_date(data_dict.get("data_start_date")) or start_date
+                self.current_date = _parse_cached_date(data_dict.get("data_end_date")) or current_date
                 self.smoothed_hist_rbp = data_dict["smoothed_rbp"]
                 self.smoothed_hist_rr = data_dict["smoothed_rr"]
                 self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
@@ -155,6 +178,8 @@ class Data:
         logger.info("Refreshing historical data (forced cache bypass)...")
         
         current_date = date.today() - timedelta(days=1)
+        if current_date > date.today():
+            current_date = date.today()
         start_date = settings.STARTUP_DATE
         cache = Cache(settings.SHARED_CACHE_DIR)
     
@@ -179,8 +204,8 @@ class Data:
     
                 # Update instance fields
                 self.historical_data = data_dict
-                self.start_date = start_date
-                self.current_date = current_date
+                self.start_date = _parse_cached_date(data_dict.get("data_start_date")) or start_date
+                self.current_date = _parse_cached_date(data_dict.get("data_end_date")) or current_date
                 self.smoothed_hist_rbp = data_dict["smoothed_rbp"]
                 self.smoothed_hist_rr = data_dict["smoothed_rr"]
                 self.smoothed_hist_fpr = data_dict["smoothed_fpr"]
@@ -271,6 +296,19 @@ class Data:
 # ------------------------------------------------------------------
 
 PIB = 2**50
+
+
+def _parse_cached_date(value: Any) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
 
 
 def sanity_check_date(date_in: datetime.date, err_msg=None):

@@ -109,10 +109,8 @@ class Data:
             self.smoothed_hist_rr = cached_result["smoothed_rr"]
             self.smoothed_hist_fpr = cached_result["smoothed_fpr"]
 
-            # Get dates from the cached data itself (they're stored in offline_data)
-            from datetime import datetime
-            self.start_date = settings.STARTUP_DATE
-            self.current_date = date.today() - timedelta(days=1)
+            self.start_date = _parse_cached_date(cached_result.get("data_start_date")) or settings.STARTUP_DATE
+            self.current_date = _parse_cached_date(cached_result.get("data_end_date")) or (date.today() - timedelta(days=1))
 
             logger.info(f"Historical data loaded from shared cache successfully!")
             logger.info(f"Data period: {self.start_date} to {self.current_date}")
@@ -239,6 +237,19 @@ class Data:
         new_data['known_scheduled_pledge_release_full_vec'] = hist_data['known_scheduled_pledge_release_full_vec'][:pledge_release_length]
 
         return new_data
+
+
+def _parse_cached_date(value: Any) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
 
 # ------------------------------------------------------------------
 # Utility functions

@@ -214,6 +214,17 @@ async def get_historical_data_full():
         smoothed_fpr = hist_data["smoothed_fpr"]
 
         start_date = hist_data["start_date"]
+        current_date = hist_data["current_date"]
+        hist_window_start_date = hist_data.get("hist_window_start_date")
+        hist_window_end_date = hist_data.get("hist_window_end_date")
+        if isinstance(hist_window_start_date, str):
+            hist_window_start_date = date.fromisoformat(hist_window_start_date)
+        if isinstance(hist_window_end_date, str):
+            hist_window_end_date = date.fromisoformat(hist_window_end_date)
+        if hist_window_start_date is None:
+            hist_window_start_date = current_date - timedelta(days=len(hist_rbp) - 1)
+        if hist_window_end_date is None:
+            hist_window_end_date = current_date
 
         # Wrap into FetchDataResults
         results = FetchDataResults.from_raw(
@@ -226,10 +237,24 @@ async def get_historical_data_full():
             smoothed_rbp=smoothed_rbp,
             smoothed_rr=smoothed_rr,
             smoothed_fpr=smoothed_fpr,
+            metadata={
+                "data_start_date": start_date,
+                "data_end_date": current_date,
+                "hist_window_start_date": hist_window_start_date,
+                "hist_window_end_date": hist_window_end_date,
+                "hist_window_days": len(hist_rbp),
+            },
         )
 
         # Downsample to Mondays
-        results = results.downsample_mondays(start_date)
+        results = results.downsample_mondays(
+            start_date,
+            start_date_by_key={
+                "raw_byte_power": hist_window_start_date,
+                "renewal_rate": hist_window_start_date,
+                "filplus_rate": hist_window_start_date,
+            },
+        )
 
         return results.to_dict()
 
@@ -327,7 +352,7 @@ async def simulate(req: SimulationRequest):
         )
         results = SimulationResults.from_raw(
             raw_results, start_date, current_date, forecast_len,
-            smoothed_rbp, smoothed_rr, smoothed_fpr
+            rbp_value, rr_value, fpr_value
         )
 
         # Downsample to Mondays
@@ -430,7 +455,7 @@ async def simulatefull(req: SimulationRequest):
         )
         results = SimulationResults.from_raw(
             raw_results, start_date, current_date, forecast_len,
-            smoothed_rbp, smoothed_rr, smoothed_fpr
+            rbp_value, rr_value, fpr_value
         )
         return results.to_dict() 
 
