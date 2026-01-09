@@ -11,4 +11,11 @@ export SHARED_CACHE_DIR
 export HOST
 export PORT
 
+if command -v lsof >/dev/null 2>&1; then
+  if lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
+    echo "Port ${PORT} is already in use. Set PORT to a free port and retry." >&2
+    exit 1
+  fi
+fi
+
 poetry run uvicorn services.api.main:app --reload --host "${HOST}" --port "${PORT}"
