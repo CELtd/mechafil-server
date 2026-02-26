@@ -100,6 +100,46 @@ class SimulationResults:
                 simulation_output[k] = v
         return cls(input_data=input_data, simulation_output=simulation_output) 
 
+    @classmethod
+    def from_raw_with_history(
+        cls,
+        raw_results: Dict[str, Any],
+        start_date,
+        current_date,
+        forecast_len,
+        rbp_value,
+        rr_value,
+        fpr_value,
+    ) -> "SimulationResults":
+        """Like from_raw() but keeps the historical window (start_date → current_date)."""
+        historical_days = (current_date - start_date).days if hasattr(current_date, "__sub__") else 0
+        total_len = historical_days + forecast_len
+
+        input_data = {
+            "start_date": start_date.strftime("%Y-%m-%d") if hasattr(start_date, "strftime") else str(start_date),
+            "current_date": current_date.strftime("%Y-%m-%d") if hasattr(current_date, "strftime") else str(current_date),
+            "historical_days": historical_days,
+            "forecast_length_days": forecast_len,
+            "raw_byte_power": _summarize_input_value(rbp_value),
+            "renewal_rate": _summarize_input_value(rr_value),
+            "filplus_rate": _summarize_input_value(fpr_value),
+        }
+        simulation_output = {}
+        for k, v in raw_results.items():
+            if hasattr(v, "__iter__") and not isinstance(v, str):
+                arr = [round(float(item), 6) for item in v]
+                if k in ['rb_sched_expire_power_pib', 'qa_sched_expire_power_pib']:
+                    # These are forecast-only arrays; return as-is (they start at current_date)
+                    simulation_output[k] = arr[:forecast_len]
+                else:
+                    # Full history + forecast window
+                    simulation_output[k] = arr[:total_len]
+            elif isinstance(v, (int, float)):
+                simulation_output[k] = round(float(v), 6)
+            else:
+                simulation_output[k] = v
+        return cls(input_data=input_data, simulation_output=simulation_output)
+
     def downsample_mondays(self, start_date: date) -> "SimulationResults":
         """
         Return a new SimulationResults object with arrays downsampled to Mondays.

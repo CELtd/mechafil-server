@@ -32,7 +32,7 @@ pandas = "^2.0.0"
 httpx = "^0.24.0"
 # Git dependencies
 pystarboard = {git = "https://github.com/CELtd/pystarboard.git"}
-mechafil-jax = {git = "https://github.com/CELtd/mechafil-jax.git"}
+mechafil-jax = {git = "https://github.com/CELtd/mechafil-jax.git", rev = "main"}
 # Documentation dependencies (moved from dev group to ensure docs are always built)
 sphinx = "^7.2.0"
 sphinx-rtd-theme = "^2.0.0"

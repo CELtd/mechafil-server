@@ -52,6 +52,10 @@ class Data:
 
         offline_data = get_simulation_data(bearer_or_file, start_date, current_date, end_date)
 
+        # 1-day version: minimal historical window to reduce initial-condition drift
+        one_day_start = current_date - timedelta(days=1)
+        offline_data_1day = get_simulation_data(bearer_or_file, one_day_start, current_date, end_date)
+
         t_rbp, hist_rbp = get_historical_daily_onboarded_power(start_date, current_date)
         t_rr, hist_rr = get_historical_renewal_rate(start_date, current_date)
         t_fpr, hist_fpr = get_historical_filplus_rate(start_date, current_date)
@@ -79,6 +83,7 @@ class Data:
 
         return {
             "offline_data": offline_data,
+            "offline_data_1day": offline_data_1day,
             "hist_rbp": hist_rbp,
             "hist_rr": hist_rr,
             "hist_fpr": hist_fpr,

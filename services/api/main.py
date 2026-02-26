@@ -325,8 +325,8 @@ async def simulate(req: SimulationRequest):
         fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
         lock_target = req.lock_target if req.lock_target is not None else settings.LOCK_TARGET
 
-        start_date = hist_data["start_date"]
         current_date = hist_data["current_date"]
+        start_date = current_date - timedelta(days=1)
         sim_len = settings.WINDOW_DAYS
 
         # Convert parameters to JAX arrays (handle both constants and arrays)
@@ -334,20 +334,21 @@ async def simulate(req: SimulationRequest):
             rbp = jnp.array(rbp_value)
         else:
             rbp = jnp.ones(sim_len) * rbp_value
-            
+
         if isinstance(rr_value, list):
             rr = jnp.array(rr_value)
         else:
             rr = jnp.ones(sim_len) * rr_value
-            
+
         if isinstance(fpr_value, list):
             fpr = jnp.array(fpr_value)
         else:
             fpr = jnp.ones(sim_len) * fpr_value
 
+        offline_data = hist_data.get("offline_data_1day", hist_data["offline_data"])
         raw_results = mechafil_sim.run_sim(
             rbp, rr, fpr, lock_target, start_date, current_date,
-            sim_len, sector_duration_days, hist_data["offline_data"],
+            sim_len, sector_duration_days, offline_data,
             use_available_supply=False
         )
         results = SimulationResults.from_raw(
@@ -428,41 +429,108 @@ async def simulatefull(req: SimulationRequest):
         fpr_value = req.fpr if req.fpr is not None else smoothed_fpr
         lock_target = req.lock_target if req.lock_target is not None else settings.LOCK_TARGET
 
-        start_date = hist_data["start_date"]
         current_date = hist_data["current_date"]
-        sim_len = settings.WINDOW_DAYS 
+        start_date = current_date - timedelta(days=1)
+        sim_len = settings.WINDOW_DAYS
 
         # Convert parameters to JAX arrays (handle both constants and arrays)
         if isinstance(rbp_value, list):
             rbp = jnp.array(rbp_value)
         else:
             rbp = jnp.ones(sim_len) * rbp_value
-            
+
         if isinstance(rr_value, list):
             rr = jnp.array(rr_value)
         else:
             rr = jnp.ones(sim_len) * rr_value
-            
+
         if isinstance(fpr_value, list):
             fpr = jnp.array(fpr_value)
         else:
             fpr = jnp.ones(sim_len) * fpr_value
 
+        offline_data = hist_data.get("offline_data_1day", hist_data["offline_data"])
         raw_results = mechafil_sim.run_sim(
             rbp, rr, fpr, lock_target, start_date, current_date,
-            sim_len, sector_duration_days, hist_data["offline_data"],
+            sim_len, sector_duration_days, offline_data,
             use_available_supply=False
         )
         results = SimulationResults.from_raw(
             raw_results, start_date, current_date, forecast_len,
             rbp_value, rr_value, fpr_value
         )
-        return results.to_dict() 
+        return results.to_dict()
 
     except Exception as e:
         logger.error(f"Simulation error: {e}")
         raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
 
+
+@app.post("/simulate/full-with-history", tags=["Simulation"])
+async def simulate_full_with_history(req: SimulationRequest):
+    """
+    Run a Filecoin forecast simulation and return BOTH the historical
+    simulation trajectory (start_date → current_date) AND the forecast
+    (current_date → current_date + forecast_length_days).
+
+    The boundary is indicated by `input.current_date` and `input.historical_days`.
+    Arrays are daily (no Monday downsampling).
+    """
+    global loaded_data
+
+    if loaded_data is None or loaded_data.historical_data is None:
+        logger.info("Lazy loading historical data on first request...")
+        try:
+            if loaded_data is None:
+                loaded_data = Data()
+            loaded_data.load_historical_data()
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to load historical data: {str(e)}"
+            )
+
+    try:
+        hist_data = loaded_data.get_historical_data()
+        if not hist_data:
+            raise RuntimeError("No historical data loaded")
+
+        forecast_len = req.forecast_length_days if req.forecast_length_days is not None else settings.WINDOW_DAYS
+        sector_duration_days = req.sector_duration_days if req.sector_duration_days is not None else settings.SECTOR_DURATION_DAYS
+        smoothed_rbp = hist_data["smoothed_rbp"]
+        smoothed_rr  = hist_data["smoothed_rr"]
+        smoothed_fpr = hist_data["smoothed_fpr"]
+        rbp_value  = req.rbp        if req.rbp        is not None else smoothed_rbp
+        rr_value   = req.rr         if req.rr         is not None else smoothed_rr
+        fpr_value  = req.fpr        if req.fpr        is not None else smoothed_fpr
+        lock_target = req.lock_target if req.lock_target is not None else settings.LOCK_TARGET
+
+        current_date = hist_data["current_date"]
+        start_date   = current_date - timedelta(days=1)
+        sim_len      = settings.WINDOW_DAYS
+
+        rbp = jnp.array(rbp_value) if isinstance(rbp_value, list) else jnp.ones(sim_len) * rbp_value
+        rr  = jnp.array(rr_value)  if isinstance(rr_value,  list) else jnp.ones(sim_len) * rr_value
+        fpr = jnp.array(fpr_value) if isinstance(fpr_value, list) else jnp.ones(sim_len) * fpr_value
+
+        offline_data = hist_data.get("offline_data_1day", hist_data["offline_data"])
+        raw_results = mechafil_sim.run_sim(
+            rbp, rr, fpr, lock_target, start_date, current_date,
+            sim_len, sector_duration_days, offline_data,
+            use_available_supply=False,
+        )
+        results = SimulationResults.from_raw_with_history(
+            raw_results, start_date, current_date, forecast_len,
+            rbp_value, rr_value, fpr_value,
+        )
+        if req.output:
+            results = results.filter_fields(req.output)
+        return results.to_dict()
+
+    except Exception as e:
+        logger.error(f"Simulation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
 
 
 def main():

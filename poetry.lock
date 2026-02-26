@@ -2070,8 +2070,8 @@ test = ["mechaFIL @ git+https://github.com/CELtd/filecoin-mecha-twin@mechafil_ja
 [package.source]
 type = "git"
 url = "https://github.com/CELtd/mechafil-jax.git"
-reference = "HEAD"
-resolved_reference = "39e63f03b35899cec3173e9b3436754e156fdf24"
+reference = "main"
+resolved_reference = "ab39bfb71e81d9efded2c93c2d98c760bbb2d695"
 
 [[package]]
 name = "mistune"
@@ -4489,4 +4489,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "fef4d56ac930635e9abe18e36900d63976f515d27f1c709dcd303d6e929ebc5a"
+content-hash = "739677d56b698df54d503cd3bd6b6f43e4750d4338fbf1e0d70264446d45ed4f"
