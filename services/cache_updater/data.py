@@ -59,6 +59,8 @@ class Data:
         t_rbp, hist_rbp = get_historical_daily_onboarded_power(start_date, current_date)
         t_rr, hist_rr = get_historical_renewal_rate(start_date, current_date)
         t_fpr, hist_fpr = get_historical_filplus_rate(start_date, current_date)
+        _, hist_locked_fil, hist_circ_supply, hist_mined_fil, hist_burnt_fil = \
+            get_historical_supply_stats(start_date, current_date)
 
         smoothed_rbp = float(np.median(hist_rbp[-30:]))
         smoothed_rr = float(np.median(hist_rr[-30:]))
@@ -87,6 +89,10 @@ class Data:
             "hist_rbp": hist_rbp,
             "hist_rr": hist_rr,
             "hist_fpr": hist_fpr,
+            "hist_locked_fil": hist_locked_fil,
+            "hist_circ_supply": hist_circ_supply,
+            "hist_mined_fil": hist_mined_fil,
+            "hist_burnt_fil": hist_burnt_fil,
             "smoothed_rbp": smoothed_rbp,
             "smoothed_rr": smoothed_rr,
             "smoothed_fpr": smoothed_fpr,
@@ -366,6 +372,19 @@ def get_historical_deals_onboard(start_date: datetime.date, end_date: datetime.d
     )
     deals_onboard_vec /= PIB
     return df["date"], deals_onboard_vec
+
+
+def get_historical_supply_stats(start_date: datetime.date, end_date: datetime.date):
+    """Fetch on-chain supply stats from Spacescope: locked FIL, circ supply, mined, burnt."""
+    df = pystarboard.data.query_supply_stats(start_date, end_date)
+    df = df.sort_values("date")
+    return (
+        pd.to_datetime(df["date"]),
+        df["locked_fil"].astype(float).values,
+        df["circulating_fil"].astype(float).values,
+        df["mined_fil"].astype(float).values,
+        df["burnt_fil"].astype(float).values,
+    )
 
 
 def get_historical_filplus_rate(start_date: datetime.date, end_date: datetime.date):

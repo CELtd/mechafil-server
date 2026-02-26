@@ -309,7 +309,8 @@ class FetchDataResults:
 
         # Field aliases for clarity (keep originals to avoid breaking consumers)
         if "raw_byte_power" in combined_data:
-            combined_data["raw_byte_power_onboarded_eib_per_day"] = combined_data["raw_byte_power"]
+            combined_data["raw_byte_power_onboarded_pib_per_day"] = combined_data["raw_byte_power"]
+            combined_data["raw_byte_power_onboarded_eib_per_day"] = combined_data["raw_byte_power"]  # deprecated alias
         if "historical_raw_power_eib" in combined_data:
             combined_data["network_raw_power_eib"] = combined_data["historical_raw_power_eib"]
         if "historical_qa_power_eib" in combined_data:
@@ -317,17 +318,22 @@ class FetchDataResults:
 
         # Lightweight field metadata to disambiguate flows vs stocks
         combined_data["field_meta"] = {
-            "raw_byte_power": {"type": "flow", "unit": "EiB/day", "meaning": "onboarding rate"},
-            "raw_byte_power_onboarded_eib_per_day": {"type": "flow", "unit": "EiB/day", "meaning": "onboarding rate"},
+            "raw_byte_power": {"type": "flow", "unit": "PiB/day", "meaning": "onboarding rate"},
+            "raw_byte_power_onboarded_pib_per_day": {"type": "flow", "unit": "PiB/day", "meaning": "onboarding rate"},
+            "raw_byte_power_onboarded_eib_per_day": {"type": "flow", "unit": "PiB/day", "meaning": "onboarding rate (deprecated alias, name is misleading)"},
             "renewal_rate": {"type": "rate", "unit": "fraction", "meaning": "renewal rate"},
             "filplus_rate": {"type": "rate", "unit": "fraction", "meaning": "FIL+ share of onboarding"},
             "historical_raw_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network RBP"},
             "historical_qa_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network QAP"},
             "network_raw_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network RBP"},
             "network_qa_power_eib": {"type": "stock", "unit": "EiB", "meaning": "total network QAP"},
-            "raw_byte_power_averaged_over_previous_30days": {"type": "flow", "unit": "EiB/day", "meaning": "median onboarding rate"},
+            "raw_byte_power_averaged_over_previous_30days": {"type": "flow", "unit": "PiB/day", "meaning": "median onboarding rate"},
             "renewal_rate_averaged_over_previous_30days": {"type": "rate", "unit": "fraction", "meaning": "median renewal rate"},
             "filplus_rate_averaged_over_previous_30days": {"type": "rate", "unit": "fraction", "meaning": "median FIL+ rate"},
+            "locked_fil":  {"type": "stock", "unit": "FIL", "meaning": "total network locked FIL (pledge + reward vesting)"},
+            "circ_supply": {"type": "stock", "unit": "FIL", "meaning": "circulating supply"},
+            "mined_fil":   {"type": "stock", "unit": "FIL", "meaning": "cumulative mined block rewards"},
+            "burnt_fil":   {"type": "stock", "unit": "FIL", "meaning": "cumulative burnt FIL (gas + penalties)"},
         }
 
         return cls(data=combined_data)

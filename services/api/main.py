@@ -208,6 +208,10 @@ async def get_historical_data_full():
         hist_rbp = hist_data["hist_rbp"]
         hist_rr = hist_data["hist_rr"]
         hist_fpr = hist_data["hist_fpr"]
+        hist_locked_fil  = hist_data.get("hist_locked_fil", [])
+        hist_circ_supply = hist_data.get("hist_circ_supply", [])
+        hist_mined_fil   = hist_data.get("hist_mined_fil", [])
+        hist_burnt_fil   = hist_data.get("hist_burnt_fil", [])
 
         smoothed_rbp = hist_data["smoothed_rbp"]
         smoothed_rr = hist_data["smoothed_rr"]
@@ -232,6 +236,10 @@ async def get_historical_data_full():
                 "raw_byte_power": hist_rbp,
                 "renewal_rate": hist_rr,
                 "filplus_rate": hist_fpr,
+                "locked_fil":   hist_locked_fil,
+                "circ_supply":  hist_circ_supply,
+                "mined_fil":    hist_mined_fil,
+                "burnt_fil":    hist_burnt_fil,
             },
             offline_data=offline_data,
             smoothed_rbp=smoothed_rbp,
