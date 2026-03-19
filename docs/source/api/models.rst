@@ -127,9 +127,21 @@ The response contains two main sections:
    * - Field
      - Type
      - Description
-   * - ``current date``
+   * - ``current_date``
      - str
      - Current chain date when simulation starts (YYYY-MM-DD)
+   * - ``sim_start_date``
+     - str
+     - Date of simulation_output[field][0]; always a Monday. Use for index-to-date mapping (YYYY-MM-DD)
+   * - ``sim_end_date``
+     - str
+     - Date of simulation_output[field][-1] for standard-length fields (YYYY-MM-DD)
+   * - ``timestep_days``
+     - int
+     - Days between consecutive array entries (7 for /simulate, 1 for /simulate/full)
+   * - ``n_entries``
+     - int
+     - Expected array length for standard output fields
    * - ``forecast_length_days``
      - int
      - Length of forecast horizon in days
@@ -213,7 +225,11 @@ Available fields (when no filter is applied):
 
    {
      "input": {
-       "current date": "2025-10-02",
+       "current_date": "2025-10-02",
+       "sim_start_date": "2025-10-06",
+       "sim_end_date": "2026-10-05",
+       "timestep_days": 7,
+       "n_entries": 53,
        "forecast_length_days": 365,
        "raw_byte_power": 3.38,
        "renewal_rate": 0.83,

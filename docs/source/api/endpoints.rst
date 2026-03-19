@@ -223,7 +223,11 @@ Run a Filecoin economic forecast simulation with customizable parameters. Result
 
    {
      "input": {
-       "current date": "2025-10-02",
+       "current_date": "2025-10-02",
+       "sim_start_date": "2025-10-06",
+       "sim_end_date": "2026-10-05",
+       "timestep_days": 7,
+       "n_entries": 53,
        "forecast_length_days": 365,
        "raw_byte_power": 3.38,
        "renewal_rate": 0.83,

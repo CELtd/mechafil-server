@@ -264,6 +264,17 @@ async def get_historical_data_full():
             },
         )
 
+        # Add timestep and entry-count metadata so callers can map indices to dates
+        results.data["timestep_days"] = 7
+
+        _main_ref = results.data.get("historical_raw_power_eib") or results.data.get("network_raw_power_eib")
+        if isinstance(_main_ref, list):
+            results.data["n_entries"] = len(_main_ref)
+
+        _window_ref = results.data.get("raw_byte_power")
+        if isinstance(_window_ref, list):
+            results.data["hist_window_n_entries"] = len(_window_ref)
+
         return results.to_dict()
 
     except Exception as e:
@@ -366,12 +377,22 @@ async def simulate(req: SimulationRequest):
 
         # Downsample to Mondays
         results = results.downsample_mondays(start_date)
-        
+
+        # Add n_entries and sim_end_date now that we know the actual downsampled array length
+        _n = next(
+            (len(v) for v in results.simulation_output.values() if isinstance(v, list) and len(v) > 1),
+            None,
+        )
+        if _n is not None:
+            _sim_start = date.fromisoformat(results.input_data["sim_start_date"])
+            results.input_data["n_entries"] = _n
+            results.input_data["sim_end_date"] = (_sim_start + timedelta(days=(_n - 1) * 7)).isoformat()
+
         # Filter output if requested
         if req.output is not None:
             results = results.filter_fields(req.output)
-        
-        return results.to_dict() 
+
+        return results.to_dict()
 
     except Exception as e:
         logger.error(f"Simulation error: {e}")
@@ -467,6 +488,13 @@ async def simulatefull(req: SimulationRequest):
             raw_results, start_date, current_date, forecast_len,
             rbp_value, rr_value, fpr_value
         )
+
+        # /simulate/full returns daily data — override the Monday-based metadata from from_raw()
+        results.input_data["sim_start_date"] = current_date.isoformat()
+        results.input_data["sim_end_date"] = (current_date + timedelta(days=forecast_len - 1)).isoformat()
+        results.input_data["timestep_days"] = 1
+        results.input_data["n_entries"] = forecast_len
+
         return results.to_dict()
 
     except Exception as e:

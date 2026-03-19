@@ -12,7 +12,12 @@ class SimulationResults:
     The object has two main fields:
 
     - `input_data`: dictionary containing metadata about the simulation run:
-        * "current date": current chain date when simulation starts (string, YYYY-MM-DD)
+        * "current_date": current chain date when simulation starts (string, YYYY-MM-DD)
+        * "sim_start_date": date of simulation_output[field][0] — first Monday on or after
+          (current_date - 1); use this to map array indices to calendar dates (string, YYYY-MM-DD)
+        * "sim_end_date": date of simulation_output[field][-1] for standard-length fields (string, YYYY-MM-DD)
+        * "timestep_days": spacing between consecutive array entries in days (int; 7 for /simulate, 1 for /simulate/full)
+        * "n_entries": expected array length for standard output fields (int)
         * "forecast_length_days": length of forecast horizon (int)
         * "raw_byte_power": RBP value used for the simulation (float)
         * "renewal_rate": RR used for the simulation (float)
@@ -65,8 +70,21 @@ class SimulationResults:
         fpr_value
     ) -> "SimulationResults":
         historical_days = (current_date - start_date).days if hasattr(current_date, "__sub__") else None
+
+        # sim_start_date: label of the first element produced by downsample_mondays(start_date),
+        # where start_date = current_date - 1 day (as used in the simulate endpoints).
+        # This is the first Monday >= (current_date - 1), i.e. the Monday that the downsampling
+        # algorithm selects as its first entry. It is typically within 6 days of current_date.
+        # Note: due to the 1-day offset between start_date and current_date, sim_start_date can
+        # equal current_date - 1 when current_date falls on a Tuesday (start_date is then a Monday).
+        _ds_start = current_date - timedelta(days=1)
+        _first_monday_offset = (7 - _ds_start.weekday()) % 7
+        _sim_start = _ds_start + timedelta(days=_first_monday_offset)
+
         input_data = {
-            "current date": current_date.strftime("%Y-%m-%d") if hasattr(current_date, "strftime") else current_date,
+            "current_date": current_date.strftime("%Y-%m-%d") if hasattr(current_date, "strftime") else current_date,
+            "sim_start_date": _sim_start.isoformat(),
+            "timestep_days": 7,
             "forecast_length_days": forecast_len,
             "raw_byte_power": _summarize_input_value(rbp_value),
             "renewal_rate": _summarize_input_value(rr_value),

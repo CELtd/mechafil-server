@@ -177,14 +177,12 @@ Plotting with Matplotlib
    results = response.json()
    output = results['simulation_output']
 
-   # Create date labels (Mondays only, since data is downsampled)
-   current_date = datetime.strptime(results['input']['current date'], '%Y-%m-%d')
-   # Find next Monday
-   days_ahead = (7 - current_date.weekday()) % 7
-   first_monday = current_date + timedelta(days=days_ahead)
+   # Create date labels using the self-describing metadata returned by the API
+   sim_start_date = datetime.strptime(results['input']['sim_start_date'], '%Y-%m-%d')
+   timestep_days = results['input']['timestep_days']  # always 7 for /simulate
 
-   num_points = len(output['available_supply'])
-   dates = [first_monday + timedelta(weeks=i) for i in range(num_points)]
+   num_points = results['input']['n_entries']
+   dates = [sim_start_date + timedelta(days=i * timestep_days) for i in range(num_points)]
 
    # Create figure with subplots
    fig, axes = plt.subplots(3, 1, figsize=(12, 10))
